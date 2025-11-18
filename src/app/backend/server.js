@@ -5,7 +5,7 @@ const express = require('express');
 const axios = require('axios');
 
 const app = express();
-const googleClientId = 'GOOGLE_CLIENT_ID =613918756468-a4q4drq2bblikpv1v4j63nh4g101bc5s.apps.googleusercontent.com';
+const googleClientId = '613918756468-a4q4drq2bblikpv1v4j63nh4g101bc5s.apps.googleusercontent.com';
 const googlePassWord = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI = 'http://localhost:8080/login/redirect';
 
@@ -23,7 +23,8 @@ app.get('/login', (req, res) => {
     url += `?client_id=${googleClientId}`
 	// 아까 등록한 redirect_uri
     // 로그인 창에서 계정을 선택하면 구글 서버가 이 redirect_uri로 redirect 시켜줌
-    url += `&redirect_uri=${GOOGLE_REDIRECT_URI}`
+    // redirect_uri는 URL 인코딩이 필요함
+    url += `&redirect_uri=${encodeURIComponent(GOOGLE_REDIRECT_URI)}`
     // 필수 옵션.
     url += '&response_type=code'
   	// 구글에 등록된 유저 정보 email, profile을 가져오겠다 명시
