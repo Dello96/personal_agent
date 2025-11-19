@@ -36,7 +36,18 @@ app.get('/login', (req, res) => {
 
 app.get('/login/redirect', (req, res) => {
     const { code } = req.query;
-    res.send('ok');
+    
+    // TODO: 여기서 code를 사용하여 Google Access Token 받기
+    // 현재는 로그인 성공 후 프론트엔드로 리디렉션
+    const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+    
+    // 성공 시 메인 페이지로 리디렉션
+    res.redirect(`${FRONTEND_URL}/?login=success`);
+    
+    // 에러가 있는 경우
+    // if (req.query.error) {
+    //     res.redirect(`${FRONTEND_URL}/auth/login?error=${req.query.error}`);
+    // }
 });
 
 app.listen(8080, () => {
