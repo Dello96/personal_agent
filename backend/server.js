@@ -1,5 +1,6 @@
 const dotenv = require("dotenv");
-dotenv.config();
+// 루트 폴더의 .env.local 파일 사용
+dotenv.config({ path: "../.env.local" });
 
 const express = require("express");
 const axios = require("axios");
@@ -35,20 +36,53 @@ app.get("/login", (req, res) => {
   res.redirect(url);
 });
 
-app.get("/login/redirect", (req, res) => {
+app.get("/login/redirect", async (req, res) => {
   const { code } = req.query;
 
-  // TODO: 여기서 code를 사용하여 Google Access Token 받기
-  // 현재는 로그인 성공 후 프론트엔드로 리디렉션
-  const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+  if (!code) {
+    const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+    res.redirect(`${FRONTEND_URL}/auth/login?error=no_code`);
+    return;
+  }
 
-  // 성공 시 메인 페이지로 리디렉션
-  res.redirect(`${FRONTEND_URL}/?login=success`);
+  try {
+    // TODO: Google Access Token 받기
+    // const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', {
+    //   code,
+    //   client_id: googleClientId,
+    //   client_secret: googlePassWord,
+    //   redirect_uri: GOOGLE_REDIRECT_URI,
+    //   grant_type: 'authorization_code',
+    // });
 
-  // 에러가 있는 경우
-  // if (req.query.error) {
-  //     res.redirect(`${FRONTEND_URL}/auth/login?error=${req.query.error}`);
-  // }
+    // TODO: 사용자 정보 가져오기
+    // const userResponse = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
+    //   headers: { Authorization: `Bearer ${tokenResponse.data.access_token}` },
+    // });
+
+    // 임시 토큰과 사용자 정보 (실제로는 위의 API 호출 결과 사용)
+    const token = "temp-token-" + Date.now();
+    const user = {
+      id: "user-123",
+      email: "user@example.com",
+      name: "Test User",
+      picture: "https://via.placeholder.com/150",
+    };
+
+    const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+
+    // 사용자 정보를 JSON 문자열로 인코딩하여 전달
+    const userInfo = encodeURIComponent(JSON.stringify(user));
+
+    // 성공 시 메인 페이지로 리디렉션 (토큰과 사용자 정보 포함)
+    res.redirect(
+      `${FRONTEND_URL}/?login=success&token=${token}&user=${userInfo}`
+    );
+  } catch (error) {
+    console.error("Login error:", error);
+    const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+    res.redirect(`${FRONTEND_URL}/auth/login?error=login_failed`);
+  }
 });
 
 app.listen(8080, () => {
