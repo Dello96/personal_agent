@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 
 // 사용자 정보 타입 정의
 interface User {
@@ -7,6 +7,9 @@ interface User {
   email: string;
   name: string;
   picture?: string;
+  role: "MEMBER" | "TEAM_LEAD" | "MANAGER" | "DIRECTOR";
+  teamId?: string;
+  teamName?: string;
 }
 
 // Auth 상태 타입
@@ -16,6 +19,8 @@ interface AuthState {
   token: string | null;
   login: (user: User, token: string) => void;
   logout: () => void;
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
 }
 
 // Zustand Store 생성 (persist 미들웨어로 localStorage 자동 저장)
@@ -25,6 +30,12 @@ export const useAuthStore = create<AuthState>()(
       isLoggedIn: false,
       user: null,
       token: null,
+      _hasHydrated: false,
+      setHasHydrated: (state) => {
+        set({
+          _hasHydrated: state,
+        });
+      },
 
       // 로그인 함수
       login: (user, token) => {
@@ -47,6 +58,13 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "auth-storage", // localStorage key 이름
+      storage: createJSONStorage(() => localStorage), // 명시적으로 localStorage 사용
+      // 하이드레이션 완료 후 콜백
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.setHasHydrated(true);
+        }
+      },
     }
   )
 );
