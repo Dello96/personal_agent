@@ -83,24 +83,28 @@ export default function Home() {
 
   return (
     <div>
-      <div className="flex flex-col w-full h-[600px] bg-sky-50">
-        frame
-        <div className="flex flex-row bg-blue-100">
-          <div className="flex flex-col bg-red-100 w-[300px] h-[200px]">
-            <button>진행중인 업무</button>
-            <button>완료된 업무</button>
-            <button>요청사항</button>
-          </div>
-          {todayWork ? (
-            <div className="flex flex-col w-full h-[200px] pt-10 text-center justify-center">
-              today's work
-              <button>Work Start</button>
+      {isLoggedIn ? (
+        <div className="flex flex-col w-full h-[600px] bg-sky-50">
+          frame
+          <div className="flex flex-row bg-blue-100">
+            <div className="flex flex-col bg-red-100 w-[300px] h-[200px]">
+              <button>진행중인 업무</button>
+              <button>완료된 업무</button>
+              <button>요청사항</button>
             </div>
-          ) : (
-            <div>Work Clear!</div>
-          )}
+            {todayWork ? (
+              <div className="flex flex-col w-full h-[200px] pt-10 text-center justify-center">
+                today's work
+                <button>Work Start</button>
+              </div>
+            ) : (
+              <div>Work Clear!</div>
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div>환영합니다! 로그인을 완료하면 오늘의 업무가 시작됩니다!</div>
+      )}
 
       {/* 성공 메시지 */}
       {showSuccessMessage && (
