@@ -1,9 +1,9 @@
 const dotenv = require("dotenv");
-// 루트 폴더의 .env.local 파일 사용
 dotenv.config({ path: "../.env.local" });
-
+const jwt = require("jsonwebtoken");
 const express = require("express");
 const axios = require("axios");
+const cors = require("cors");
 
 const app = express();
 const googleClientId =
@@ -18,22 +18,46 @@ app.get("/", function (req, res) {
     `);
 });
 
+app.use(cors());
+app.use(express.json());
+
+const tasksRoutes = require("./routes/tasks");
+const teamRoutes = require("./routes/team");
+const usersRoutes = require("./routes/users");
+
+app.use("/api/tasks", tasksRoutes);
+app.use("/api/team", teamRoutes);
+app.use("/api/users", usersRoutes);
+
+// Prisma 클라이언트 import
+const prisma = require("./db/prisma");
+
 app.get("/login", (req, res) => {
   let url = "https://accounts.google.com/o/oauth2/v2/auth";
-  // client_id는 위 스크린샷을 보면 발급 받았음을 알 수 있음
-  // 단, 스크린샷에 있는 ID가 아닌 당신이 직접 발급 받은 ID를 사용해야 함.
   url += `?client_id=${googleClientId}`;
-  // 아까 등록한 redirect_uri
-  // 로그인 창에서 계정을 선택하면 구글 서버가 이 redirect_uri로 redirect 시켜줌
-  // redirect_uri는 URL 인코딩이 필요함
   url += `&redirect_uri=${encodeURIComponent(GOOGLE_REDIRECT_URI)}`;
-  // 필수 옵션.
   url += "&response_type=code";
-  // 구글에 등록된 유저 정보 email, profile을 가져오겠다 명시
   url += "&scope=email profile";
-  // 완성된 url로 이동
-  // 이 url이 위에서 본 구글 계정을 선택하는 화면임.
   res.redirect(url);
+});
+
+app.get("/health", async (req, res) => {
+  try {
+    // DB 연결 테스트
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({
+      status: "ok",
+      database: "connected",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Health check error:", error);
+    res.status(500).json({
+      status: "error",
+      database: "disconnected",
+      error: error.message,
+    });
+  }
 });
 
 app.get("/login/redirect", async (req, res) => {
@@ -46,37 +70,72 @@ app.get("/login/redirect", async (req, res) => {
   }
 
   try {
-    // TODO: Google Access Token 받기
-    // const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', {
-    //   code,
-    //   client_id: googleClientId,
-    //   client_secret: googlePassWord,
-    //   redirect_uri: GOOGLE_REDIRECT_URI,
-    //   grant_type: 'authorization_code',
-    // });
+    // 1. Google Access Token 받기
+    const tokenResponse = await axios.post(
+      "https://oauth2.googleapis.com/token",
+      {
+        code,
+        client_id: googleClientId,
+        client_secret: googlePassWord,
+        redirect_uri: GOOGLE_REDIRECT_URI,
+        grant_type: "authorization_code",
+      }
+    );
 
-    // TODO: 사용자 정보 가져오기
-    // const userResponse = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
-    //   headers: { Authorization: `Bearer ${tokenResponse.data.access_token}` },
-    // });
+    // 2. 사용자 정보 가져오기
+    const userResponse = await axios.get(
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+      {
+        headers: { Authorization: `Bearer ${tokenResponse.data.access_token}` },
+      }
+    );
 
-    // 임시 토큰과 사용자 정보 (실제로는 위의 API 호출 결과 사용)
-    const token = "temp-token-" + Date.now();
-    const user = {
-      id: "user-123",
-      email: "user@example.com",
-      name: "Test User",
-      picture: "https://via.placeholder.com/150",
-    };
+    const googleUser = userResponse.data;
+
+    // 3. DB에서 사용자 찾기 또는 생성
+    let user = await prisma.user.findUnique({
+      where: { email: googleUser.email },
+      include: { team: true },
+    });
+
+    if (!user) {
+      // 사용자가 없으면 생성 (teamId는 null로 시작)
+      user = await prisma.user.create({
+        data: {
+          email: googleUser.email,
+          name: googleUser.name,
+          picture: googleUser.picture,
+          role: "MEMBER", // 기본값
+          teamId: null, // 처음에는 팀 없음
+        },
+        include: { team: true },
+      });
+    }
+
+    // 4. JWT 토큰 생성
+    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
 
     const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
-    // 사용자 정보를 JSON 문자열로 인코딩하여 전달
-    const userInfo = encodeURIComponent(JSON.stringify(user));
+    // 5. 프론트엔드로 전달할 사용자 정보
+    const userInfo = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      picture: user.picture,
+      role: user.role,
+      teamId: user.teamId,
+      teamName: user.team?.name || null,
+    };
 
-    // 성공 시 메인 페이지로 리디렉션 (토큰과 사용자 정보 포함)
+    // 사용자 정보를 JSON 문자열로 인코딩하여 전달
+    const encodedUserInfo = encodeURIComponent(JSON.stringify(userInfo));
+
+    // 성공 시 메인 페이지로 리디렉션
     res.redirect(
-      `${FRONTEND_URL}/?login=success&token=${token}&user=${userInfo}`
+      `${FRONTEND_URL}/?login=success&token=${token}&user=${encodedUserInfo}`
     );
   } catch (error) {
     console.error("Login error:", error);
