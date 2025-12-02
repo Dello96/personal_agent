@@ -28,8 +28,23 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
   return response.json();
 };
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  picture: string | null;
+  role: string;
+  teamId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  team?: {
+    id: string;
+    name: string;
+  } | null;
+}
+
 // 현재 사용자 정보 조회
-export const getCurrentUser = async () => {
+export const getCurrentUser = async (): Promise<User> => {
   return apiRequest("/api/users/me");
 };
 
