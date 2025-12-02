@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
+import { getTasks, Task } from "@/lib/api/tasks";
 
 export default function Home() {
   const searchParams = useSearchParams();
@@ -12,6 +13,24 @@ export default function Home() {
 
   const login = useAuthStore((state) => state.login);
   const todayWork = true;
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const data = await getTasks();
+        setTasks(data);
+      } catch (error) {
+        console.error("업무 조회 실패:", error);
+      }
+    };
+
+    // 로그인된 경우에만 업무 조회
+    if (isLoggedIn) {
+      fetchTasks();
+    }
+  }, []);
 
   useEffect(() => {
     if (loginStatus === "success") {
@@ -39,6 +58,10 @@ export default function Home() {
               id: "temp-id",
               email: "user@example.com",
               name: "User",
+              picture: "picture",
+              role: "MEMBER",
+              teamId: "TEAMID",
+              teamName: "TEAMNAME",
             },
             token
           );
