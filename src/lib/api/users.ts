@@ -48,6 +48,14 @@ export const getCurrentUser = async (): Promise<User> => {
   return apiRequest("/api/users/me");
 };
 
+// users.ts에 추가
+export interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
 // 팀원 목록 조회
 export const getTeamMembers = async () => {
   return apiRequest("/api/users/team-members");
