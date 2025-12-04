@@ -12,6 +12,7 @@
     "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,css,md}\""
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.9",
     "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

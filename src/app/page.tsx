@@ -10,27 +10,37 @@ export default function Home() {
   const router = useRouter();
   const loginStatus = searchParams.get("login");
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [tasksLoading, setTasksLoading] = useState(false);
 
   const login = useAuthStore((state) => state.login);
-  const todayWork = true;
   const [tasks, setTasks] = useState<Task[]>([]);
   const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+  const [tasksError, setTasksError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchTasks = async () => {
+      // 로그인하지 않았으면 초기화
+      if (!isLoggedIn) {
+        setTasks([]);
+        setTasksLoading(false);
+        return;
+      }
+
       try {
+        setTasksLoading(true);
+        setTasksError(null);
         const data = await getTasks();
         setTasks(data);
       } catch (error) {
         console.error("업무 조회 실패:", error);
+        setTasksError("업무를 불러오는데 실패했습니다.");
+      } finally {
+        setTasksLoading(false);
       }
     };
 
-    // 로그인된 경우에만 업무 조회
-    if (isLoggedIn) {
-      fetchTasks();
-    }
-  }, []);
+    fetchTasks();
+  }, [isLoggedIn]);
 
   useEffect(() => {
     if (loginStatus === "success") {
@@ -80,6 +90,13 @@ export default function Home() {
       }
     }
   }, [loginStatus, router, login]);
+  const loginAction = () => {
+    router.push("/auth/login");
+  };
+
+  const workAssignment = () => {
+    router.push("/manager/tasks");
+  };
 
   return (
     <div>
@@ -92,18 +109,34 @@ export default function Home() {
               <button>완료된 업무</button>
               <button>요청사항</button>
             </div>
-            {todayWork ? (
+            {tasks.length === 0 ? (
               <div className="flex flex-col w-full h-[200px] pt-10 text-center justify-center">
-                today's work
-                <button>Work Start</button>
+                업무가 없습니다.
+                <button onClick={workAssignment}>업무 전달하기</button>
               </div>
             ) : (
-              <div>Work Clear!</div>
+              <div className="flex flex-col w-full h-[200px] pt-10 text-center justify-center">
+                <ul>
+                  {tasks.map((task) => (
+                    <li key={task.id}>{task.title}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
         </div>
       ) : (
-        <div>환영합니다! 로그인을 완료하면 오늘의 업무가 시작됩니다!</div>
+        <div>
+          <div className="flex flex-col w-full h-[200px] pt-10 text-center justify-center items-center bg-gray-300">
+            환영합니다! 로그인을 하시면 오늘의 업무를 확인할 수 있습니다.
+            <button
+              onClick={loginAction}
+              className="flex flex-col w-[100px] m-5 border rounded-md border-blue-400 justify-center"
+            >
+              로그인하기
+            </button>
+          </div>
+        </div>
       )}
 
       {/* 성공 메시지 */}
