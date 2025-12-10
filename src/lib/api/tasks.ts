@@ -1,5 +1,5 @@
 // tasks.ts - 업무 API 함수
-
+import { apiRequest } from "./users";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 export interface Task {
@@ -10,7 +10,7 @@ export interface Task {
   priority: string;
   assigneeId: string;
   assignerId: string;
-  teamId: string;
+  teamName: string;
   createdAt: string;
   updatedAt: string;
   dueDate: string | null;
@@ -31,40 +31,6 @@ export interface Task {
   };
 }
 
-// 토큰 가져오기 (authStore에서)
-const getToken = () => {
-  if (typeof window === "undefined") return null;
-  // authStore에서 토큰 가져오기
-  const authStore = require("@/app/stores/authStore").useAuthStore.getState();
-  return authStore.token;
-};
-
-// API 요청 헬퍼
-const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
-  const token = getToken();
-  const headers = {
-    "Content-Type": "application/json",
-    ...(token && { Authorization: `Bearer ${token}` }),
-    ...options.headers,
-  };
-
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.statusText}`);
-  }
-
-  return response.json();
-};
-
-// 업무 목록 조회
-export const getTasks = async (): Promise<Task[]> => {
-  return apiRequest("/api/tasks");
-};
-
 // 업무 생성
 export const createTask = async (data: {
   title: string;
@@ -72,7 +38,7 @@ export const createTask = async (data: {
   assigneeId: string;
   priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   dueDate?: string;
-}) => {
+}): Promise<Task> => {
   return apiRequest("/api/tasks", {
     method: "POST",
     body: JSON.stringify(data),
@@ -85,7 +51,10 @@ export const getTask = async (id: string) => {
 };
 
 // 업무 상태 변경
-export const updateTaskStatus = async (id: string, status: string) => {
+export const updateTaskStatus = async (
+  id: string,
+  status: string
+): Promise<Task> => {
   return apiRequest(`/api/tasks/${id}/status`, {
     method: "PUT",
     body: JSON.stringify({ status }),

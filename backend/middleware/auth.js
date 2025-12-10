@@ -15,7 +15,7 @@ const authenticate = async (req, res, next) => {
     // Prisma로 사용자 정보 조회
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, email: true, name: true, role: true, teamId: true },
+      select: { id: true, email: true, name: true, role: true, teamName: true },
     });
 
     if (!user) {
@@ -27,7 +27,7 @@ const authenticate = async (req, res, next) => {
       email: user.email,
       name: user.name,
       role: user.role,
-      teamId: user.teamId,
+      teamName: user.teamName,
     };
 
     next();
@@ -35,6 +35,9 @@ const authenticate = async (req, res, next) => {
     console.error("인증 오류:", error);
     res.status(401).json({ error: "인증 실패" });
   }
+  console.log("Token received:", token ? "exists" : "missing");
+  console.log("Decoded userId:", decoded?.userId);
+  console.log("User found:", user ? "yes" : "no");
 };
 
 module.exports = authenticate;

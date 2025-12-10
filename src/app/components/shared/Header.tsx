@@ -1,23 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
-import { getCurrentUser } from "@/lib/api/users";
-import { User } from "@/lib/api/users";
 
 export default function Header() {
   const router = useRouter();
 
-  // Zustand에서 로그인 상태와 함수 가져오기
+  // Zustand에서 로그인 상태와 사용자 정보 직접 가져오기
   const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const hasHydrated = useAuthStore((state) => state._hasHydrated);
   const setHasHydrated = useAuthStore((state) => state.setHasHydrated);
+
   const handleLogout = () => {
     logout();
     router.push("/");
@@ -39,36 +36,6 @@ export default function Header() {
       setHasHydrated(true);
     }
   }, [hasHydrated, setHasHydrated]);
-
-  useEffect(() => {
-    // 하이드레이션이 완료되지 않았으면 아무것도 하지 않음
-    if (!hasHydrated) {
-      return;
-    }
-
-    // 로그인된 경우에만 사용자 정보 가져오기
-    if (isLoggedIn) {
-      const fetchUserInfo = async () => {
-        try {
-          setLoading(true);
-          const userData = await getCurrentUser();
-          setUser(userData);
-          setError(null);
-        } catch (err) {
-          console.error("사용자 정보 조회 실패:", err);
-          setError("사용자 정보를 불러오는데 실패했습니다.");
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      fetchUserInfo();
-    } else {
-      // 로그인하지 않은 경우 user를 null로 설정
-      setUser(null);
-      setLoading(false);
-    }
-  }, [isLoggedIn, hasHydrated]);
 
   return (
     <header>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
-import { getTasks, Task } from "@/lib/api/tasks";
+import { getTask, Task } from "@/lib/api/tasks";
 
 export default function Home() {
   const searchParams = useSearchParams();
@@ -15,7 +15,12 @@ export default function Home() {
   const login = useAuthStore((state) => state.login);
   const [tasks, setTasks] = useState<Task[]>([]);
   const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+  const user = useAuthStore((state) => state.user);
   const [tasksError, setTasksError] = useState<string | null>(null);
+
+  const goToTeamJoin = () => {
+    router.push("/team/join");
+  };
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -26,10 +31,16 @@ export default function Home() {
         return;
       }
 
+      if (!user?.teamName) {
+        setTasks([]);
+        setTasksLoading(false);
+        return;
+      }
+
       try {
         setTasksLoading(true);
         setTasksError(null);
-        const data = await getTasks();
+        const data = await getTask(user.id);
         setTasks(data);
       } catch (error) {
         console.error("업무 조회 실패:", error);
@@ -40,7 +51,7 @@ export default function Home() {
     };
 
     fetchTasks();
-  }, [isLoggedIn]);
+  }, [isLoggedIn, user?.teamName]);
 
   useEffect(() => {
     if (loginStatus === "success") {
@@ -60,7 +71,18 @@ export default function Home() {
 
         // Zustand Store에 로그인 정보 저장
         if (user) {
-          login(user, token);
+          // role 타입 단언으로 타입 호환성 확보
+          login(
+            {
+              ...user,
+              role: user.role as
+                | "MEMBER"
+                | "TEAM_LEAD"
+                | "MANAGER"
+                | "DIRECTOR",
+            },
+            token
+          );
         } else {
           // 사용자 정보가 없으면 기본값으로 저장
           login(
@@ -70,8 +92,9 @@ export default function Home() {
               name: "User",
               picture: "picture",
               role: "MEMBER",
-              teamId: "TEAMID",
               teamName: "TEAMNAME",
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
             },
             token
           );
@@ -82,6 +105,9 @@ export default function Home() {
 
         // URL 정리
         router.replace("/");
+        if (window.location.pathname.includes("/auth/login")) {
+          router.back(); // 또는 router.push('/');
+        }
 
         // 3초 후 메시지 자동 숨김
         setTimeout(() => {
@@ -101,31 +127,58 @@ export default function Home() {
   return (
     <div>
       {isLoggedIn ? (
-        <div className="flex flex-col w-full h-[600px] bg-sky-50">
-          frame
-          <div className="flex flex-row bg-blue-100">
-            <div className="flex flex-col bg-red-100 w-[300px] h-[200px]">
-              <button>진행중인 업무</button>
-              <button>완료된 업무</button>
-              <button>요청사항</button>
+        // 로그인된 경우
+        user?.teamName ? (
+          // 팀에 가입된 경우 - 기존 업무 표시 로직
+          <div className="flex flex-col w-full h-[600px] bg-sky-50">
+            frame
+            <div className="flex flex-row bg-blue-100">
+              <div className="flex flex-col bg-red-100 w-[300px] h-[200px]">
+                <button>진행중인 업무</button>
+                <button>완료된 업무</button>
+                <button>요청사항</button>
+              </div>
+              {tasksLoading ? (
+                <div className="flex flex-col w-full h-[200px] pt-10 text-center justify-center">
+                  업무를 불러오는 중...
+                </div>
+              ) : tasks.length === 0 ? (
+                <div className="flex flex-col w-full h-[200px] pt-10 text-center justify-center">
+                  업무가 없습니다.
+                  <button onClick={workAssignment}>업무 전달하기</button>
+                </div>
+              ) : (
+                <div className="flex flex-col w-full h-[200px] pt-10 text-center justify-center">
+                  <ul>
+                    {tasks.map((task) => (
+                      <li key={task.id}>{task.title}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-            {tasks.length === 0 ? (
-              <div className="flex flex-col w-full h-[200px] pt-10 text-center justify-center">
-                업무가 없습니다.
-                <button onClick={workAssignment}>업무 전달하기</button>
-              </div>
-            ) : (
-              <div className="flex flex-col w-full h-[200px] pt-10 text-center justify-center">
-                <ul>
-                  {tasks.map((task) => (
-                    <li key={task.id}>{task.title}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </div>
-        </div>
+        ) : (
+          // 팀에 가입되지 않은 경우 - 팀 가입 안내 메시지
+          <div className="flex flex-col w-full h-[400px] pt-20 text-center justify-center items-center bg-yellow-50">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                팀 가입이 필요합니다
+              </h2>
+              <p className="text-gray-600 mb-4">
+                업무를 확인하고 관리하려면 먼저 팀에 가입해주세요.
+              </p>
+            </div>
+            <button
+              onClick={goToTeamJoin}
+              className="px-6 py-3 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+            >
+              팀 가입하기
+            </button>
+          </div>
+        )
       ) : (
+        // 로그인하지 않은 경우
         <div>
           <div className="flex flex-col w-full h-[200px] pt-10 text-center justify-center items-center bg-gray-300">
             환영합니다! 로그인을 하시면 오늘의 업무를 확인할 수 있습니다.

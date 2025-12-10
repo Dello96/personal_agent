@@ -12,9 +12,23 @@ router.get("/me", async (req, res) => {
       where: { id: req.user.userId },
       include: { team: true },
     });
+    // user가 null인 경우 체크
+    if (!user) {
+      console.error("사용자를 찾을 수 없음:", req.user.userId);
+      return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
+    }
     res.json(user);
   } catch (error) {
-    res.status(500).json({ error: "서버 오류" });
+    console.error("사용자 정보 조회 오류:", error);
+    console.error("에러 메시지:", error.message);
+    console.error("에러 스택:", error.stack);
+    if (error.code) {
+      console.error("Prisma 에러 코드:", error.code);
+    }
+    res.status(500).json({
+      error: "서버 오류",
+      message: error.message, // 개발 환경에서만 에러 메시지 포함
+    });
   }
 });
 
@@ -25,8 +39,15 @@ router.get("/team-members", async (req, res) => {
       return res.status(403).json({ error: "권한이 없습니다" });
     }
 
+    // teamName가 null인 경우 체크
+    if (!req.user.teamName) {
+      return res.status(400).json({
+        error: "팀에 속해있지 않습니다. 먼저 팀에 가입해주세요.",
+      });
+    }
+
     const members = await prisma.user.findMany({
-      where: { teamId: req.user.teamId },
+      where: { teamName: req.user.teamName },
       select: { id: true, name: true, email: true, role: true },
     });
 
