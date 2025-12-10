@@ -1,16 +1,14 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { User as ApiUser } from "@/lib/api/users";
 
 // 사용자 정보 타입 정의
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  picture?: string;
+// ApiUser를 기반으로 하되 role만 더 엄격하게, createdAt/updatedAt는 선택적으로
+type User = Omit<ApiUser, "role" | "createdAt" | "updatedAt"> & {
   role: "MEMBER" | "TEAM_LEAD" | "MANAGER" | "DIRECTOR";
-  teamId?: string;
-  teamName?: string;
-}
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 // Auth 상태 타입
 interface AuthState {

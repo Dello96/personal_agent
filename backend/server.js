@@ -95,21 +95,28 @@ app.get("/login/redirect", async (req, res) => {
     // 3. DB에서 사용자 찾기 또는 생성
     let user = await prisma.user.findUnique({
       where: { email: googleUser.email },
-      include: { team: true },
     });
 
     if (!user) {
-      // 사용자가 없으면 생성 (teamId는 null로 시작)
+      // 사용자가 없으면 생성 (teamName는 null로 시작)
       user = await prisma.user.create({
         data: {
           email: googleUser.email,
           name: googleUser.name,
           picture: googleUser.picture,
           role: "MEMBER", // 기본값
-          teamId: null, // 처음에는 팀 없음
+          teamName: null, // 처음에는 팀 없음
         },
+      });
+    }
+    if (user && user.teamName) {
+      const userWithTeam = await prisma.user.findUnique({
+        where: { id: user.id },
         include: { team: true },
       });
+      if (userWithTeam) {
+        user = userWithTeam;
+      }
     }
 
     // 4. JWT 토큰 생성
@@ -126,8 +133,7 @@ app.get("/login/redirect", async (req, res) => {
       name: user.name,
       picture: user.picture,
       role: user.role,
-      teamId: user.teamId,
-      teamName: user.team?.name || null,
+      teamName: user.teamName || null,
     };
 
     // 사용자 정보를 JSON 문자열로 인코딩하여 전달

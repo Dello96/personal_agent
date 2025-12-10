@@ -12,29 +12,26 @@ model User {
   name      String
   picture   String?
   role      Role     @default(MEMBER)
-  teamId    String?
-  team      Team?    @relation("TeamMembers", fields: [teamId], references: [id])
+  teamName  String?
+  team      Team?    @relation("TeamMembers", fields: [teamName], references: [teamName])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   assignedTasks  Task[] @relation("Assignee")
   assignedTasks2 Task[] @relation("Assigner")
-  leadingTeams   Team[] @relation("TeamLead")
 }
 
 model Team {
   id        String   @id @default(uuid())
-  name      String
-  teamLeadId String
-  teamLead  User     @relation("TeamLead", fields: [teamLeadId], references: [id])
+  teamName  String   @unique
   createdAt DateTime @default(now())
-  
+
   members User[] @relation("TeamMembers")
   tasks   Task[]
 }
 
 model Task {
-  id          String   @id @default(uuid())
+  id          String     @id @default(uuid())
   title       String
   description String?
   assigneeId  String
@@ -43,25 +40,25 @@ model Task {
   status      TaskStatus @default(PENDING)
   priority    Priority   @default(MEDIUM)
   dueDate     DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
   completedAt DateTime?
-  
+
   assignee User @relation("Assignee", fields: [assigneeId], references: [id])
   assigner User @relation("Assigner", fields: [assignerId], references: [id])
-  team    Team @relation(fields: [teamId], references: [id])
-  
+  team     Team @relation(fields: [teamId], references: [teamName])
+
   statusHistory TaskStatusHistory[]
 }
 
 model TaskStatusHistory {
-  id        String   @id @default(uuid())
+  id        String     @id @default(uuid())
   taskId    String
   status    TaskStatus
   changedBy String
   comment   String?
-  createdAt DateTime @default(now())
-  
+  createdAt DateTime   @default(now())
+
   task Task @relation(fields: [taskId], references: [id])
 }
 
