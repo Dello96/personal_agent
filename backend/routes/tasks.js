@@ -9,12 +9,17 @@ router.use(authenticate);
 // 업무 목록 조회
 router.get("/", async (req, res) => {
   try {
-    const { userId, role, teamId } = req.user;
-
-    const where =
-      role === "TEAM_LEAD" || role === "MANAGER" || role === "DIRECTOR"
-        ? { teamId }
-        : { assigneeId: userId };
+    const { userId, role, teamName } = req.user;
+    if (role === "TEAM_LEAD" || role === "MANAGER" || role === "DIRECTOR") {
+      if (!teamName) {
+        return res.status(400).json({
+          error: "팀에 속해있지 않습니다. 먼저 팀에 가입해주세요.",
+        });
+      }
+      where = { teamName };
+    } else {
+      where = { assigneeId: userId };
+    }
 
     const tasks = await prisma.task.findMany({
       where,
@@ -43,9 +48,9 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const { title, description, assigneeId, priority, dueDate } = req.body;
-    const { userId, teamId } = req.user;
+    const { userId, teamName } = req.user;
 
-    if (!teamId) {
+    if (!teamName) {
       return res.status(400).json({
         error: "팀에 속해있지 않습니다. 먼저 팀에 가입해주세요.",
       });
@@ -56,7 +61,7 @@ router.post("/", async (req, res) => {
         description,
         assigneeId,
         assignerId: userId,
-        teamId,
+        teamId: teamName,
         priority: priority || "MEDIUM",
         dueDate: dueDate ? new Date(dueDate) : null,
       },
