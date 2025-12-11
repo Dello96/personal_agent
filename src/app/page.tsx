@@ -22,6 +22,10 @@ export default function Home() {
     router.push("/team/join");
   };
 
+  const goToTeamCreate = () => {
+    router.push("/team/create");
+  };
+
   useEffect(() => {
     const fetchTasks = async () => {
       // 로그인하지 않았으면 초기화
@@ -174,6 +178,15 @@ export default function Home() {
               className="px-6 py-3 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
             >
               팀 가입하기
+            </button>
+            <p className="text-gray-600 mt-4 mb-4">
+              팀을 새로 생성해야 한다면?
+            </p>
+            <button
+              onClick={goToTeamCreate}
+              className="px-6 py-3 bg-red-500 text-white rounded-md hover:bg-red-300 transition-colors"
+            >
+              팀 생성하기
             </button>
           </div>
         )

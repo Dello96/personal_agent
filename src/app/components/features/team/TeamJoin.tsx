@@ -14,6 +14,11 @@ export default function TeamJoin() {
   const [name, setName] = useState("");
   const [teamName, setTeamName] = useState("");
   const user = useAuthStore((state) => state.user); // authStore에서 사용자 정보 다시 가져오기
+  const handleOnClick = (team: string) => {
+    setTeamName(team);
+    setSelectedTeam(team);
+    console.log(team);
+  };
   const handleSelectedSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -66,11 +71,6 @@ export default function TeamJoin() {
       // 7. 로딩 상태 해제 (선택사항)
       // setLoading(false);
     }
-  };
-  const handleOnClick = (team: string) => {
-    setTeamName(team);
-    setSelectedTeam(team);
-    console.log(team);
   };
 
   // 하드코딩된 팀목록이 아닌 생성된 목록을 불러와 조회하도록 하는 코드
