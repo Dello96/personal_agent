@@ -15,7 +15,7 @@ router.get("/dashboard", async (req, res) => {
     // 팀 통계 조회
     const stats = await prisma.task.groupBy({
       by: ["status"],
-      where: { teamName: req.user.teamName },
+      where: { teamId: req.user.teamName },
       _count: true,
     });
 
@@ -57,7 +57,7 @@ router.post("/create", async (req, res) => {
 
     // 4. 팀 이름 중복 체크
     const existingTeam = await prisma.team.findFirst({
-      where: { name: name.trim() },
+      where: { teamName: name.trim() },
     });
 
     if (existingTeam) {
@@ -69,7 +69,7 @@ router.post("/create", async (req, res) => {
       // 팀 생성
       const team = await tx.team.create({
         data: {
-          name: name.trim(),
+          teamName: name.trim(),
         },
       });
 
@@ -78,8 +78,23 @@ router.post("/create", async (req, res) => {
         where: { id: userId },
         data: { teamName: team.teamName },
       });
+      const teamWithMembers = await tx.team.findUnique({
+        where: { teamName: team.teamName },
+        include: {
+          members: {
+            select: {
+              id: true,
+              name: true, // ✅ 팀원 이름 포함
+              picture: true,
+              email: true,
+              role: true,
+              teamName: true,
+            },
+          },
+        },
+      });
 
-      return team;
+      return teamWithMembers;
     });
 
     res.status(201).json({
@@ -99,76 +114,185 @@ router.post("/create", async (req, res) => {
 });
 // 팀 가입 (모든 사용자 가능)
 router.post("/join", async (req, res) => {
+  let responseSent = false;
+
+  const sendResponse = (status, data) => {
+    if (responseSent || res.headersSent) {
+      console.error(
+        "응답이 이미 전송되었습니다. 상태:",
+        status,
+        "데이터:",
+        data
+      );
+      return null;
+    }
+    responseSent = true;
+    return res.status(status).json(data);
+  };
   try {
     const { teamName } = req.body;
     const { userId, teamName: userTeamName } = req.user;
 
     // 1. teamName 검증
     if (!teamName || typeof teamName !== "string") {
-      return res.status(400).json({ error: "팀 ID를 입력해주세요." });
+      return sendResponse(400, { error: "팀 ID를 입력해주세요." }); // ✅ sendResponse 사용
     }
 
     // 2. 이미 팀에 속해있는지 체크
     if (userTeamName) {
-      return res.status(400).json({
+      return sendResponse(400, {
+        // ✅ sendResponse 사용
         error: "이미 팀에 속해있습니다. 팀을 나간 후 다시 시도해주세요.",
       });
     }
 
-    // 3. 팀 존재 여부 확인 (ID 또는 이름으로 찾기)
-    const team = await prisma.team.findFirst({
-      where: {
-        OR: [
-          { id: teamName }, // UUID인 경우
-          { name: teamName }, // 이름인 경우
-        ],
-      },
-      include: {
-        members: {
-          select: { id: true, name: true, email: true },
+    // 3. 팀 존재 여부 확인
+    let team;
+    try {
+      team = await prisma.team.findFirst({
+        where: {
+          OR: [{ id: teamName }, { teamName: teamName }],
         },
-      },
-    });
-
-    if (!team) {
-      return res.status(404).json({ error: "존재하지 않는 팀입니다." });
+        include: {
+          members: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+      });
+    } catch (findError) {
+      console.error("팀 조회 오류:", findError);
+      if (!res.headersSent) {
+        return sendResponse(500, { error: "팀 조회 중 오류가 발생했습니다." }); // ✅ sendResponse 사용
+      }
+      return;
     }
 
-    // 4. 이미 해당 팀의 멤버인지 체크 (중복 가입 방지)
+    if (!team) {
+      return sendResponse(404, { error: "존재하지 않는 팀입니다." }); // ✅ sendResponse 사용
+    }
+
+    // 4. 이미 해당 팀의 멤버인지 체크
     const isAlreadyMember = team.members.some((member) => member.id === userId);
     if (isAlreadyMember) {
-      return res.status(400).json({ error: "이미 해당 팀의 멤버입니다." });
+      return sendResponse(400, { error: "이미 해당 팀의 멤버입니다." }); // ✅ sendResponse 사용
     }
 
     // 5. 사용자의 teamName 업데이트
-    await prisma.user.update({
-      where: { id: userId },
-      data: { teamName: team.teamName },
-    });
+    try {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { teamName: team.teamName },
+      });
+    } catch (updateError) {
+      console.error("사용자 업데이트 오류:", updateError);
+      console.error("에러 코드:", updateError.code);
+      console.error("에러 메시지:", updateError.message);
+
+      if (res.headersSent) {
+        return;
+      }
+
+      if (updateError.code === "P2025") {
+        return sendResponse(404, { error: "사용자를 찾을 수 없습니다." }); // ✅ sendResponse 사용
+      }
+
+      if (updateError.code === "P2003") {
+        return sendResponse(400, { error: "존재하지 않는 팀입니다." }); // ✅ sendResponse 사용
+      }
+
+      return sendResponse(500, {
+        // ✅ sendResponse 사용
+        error: "사용자 정보 업데이트 중 오류가 발생했습니다.",
+        details:
+          process.env.NODE_ENV === "development"
+            ? updateError.message
+            : undefined,
+      });
+    }
 
     // 6. 업데이트된 팀 정보 반환
-    const updatedTeam = await prisma.team.findUnique({
-      where: { id: team.teamName },
-      include: {
-        members: {
-          select: { id: true, name: true, email: true, role: true },
+    let updatedTeam;
+    try {
+      updatedTeam = await prisma.team.findUnique({
+        where: { teamName: team.teamName },
+        include: {
+          members: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              picture: true,
+              teamName: true,
+            },
+          },
         },
-      },
-    });
+      });
+    } catch (findError) {
+      console.error("팀 정보 조회 오류:", findError);
+      console.error("에러 코드:", findError.code);
+      console.error("에러 메시지:", findError.message);
 
-    res.status(200).json({
+      if (res.headersSent) {
+        return;
+      }
+
+      return sendResponse(500, {
+        // ✅ sendResponse 사용
+        error: "팀 정보 조회 중 오류가 발생했습니다.",
+        details:
+          process.env.NODE_ENV === "development"
+            ? findError.message
+            : undefined,
+      });
+    }
+
+    if (!updatedTeam) {
+      if (res.headersSent) {
+        return;
+      }
+      return sendResponse(500, { error: "팀 정보를 불러올 수 없습니다." });
+    }
+
+    if (res.headersSent) {
+      console.error("응답이 이미 전송되었습니다.");
+      return;
+    }
+
+    return sendResponse(200, {
+      // ✅ sendResponse 사용
       message: "팀에 성공적으로 가입했습니다.",
       team: updatedTeam,
     });
   } catch (error) {
     console.error("팀 가입 오류:", error);
+    console.error("에러 메시지:", error.message);
+    console.error("에러 코드:", error.code);
+    console.error("에러 스택:", error.stack);
+
+    // ✅ 이미 응답을 보냈는지 확인 (가장 중요!)
+    if (res.headersSent) {
+      console.error(
+        "응답이 이미 전송되었습니다. 추가 응답을 보낼 수 없습니다."
+      );
+      return;
+    }
 
     // Prisma 에러 처리
     if (error.code === "P2025") {
-      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+      return sendResponse(404, { error: "사용자를 찾을 수 없습니다." }); // ✅ sendResponse 사용
     }
 
-    res.status(500).json({ error: "서버 오류가 발생했습니다." });
+    if (error.code === "P2003") {
+      return sendResponse(400, { error: "존재하지 않는 팀입니다." }); // ✅ sendResponse 사용
+    }
+
+    sendResponse(500, {
+      // ✅ sendResponse 사용
+      error: "서버 오류가 발생했습니다.",
+      details:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 });
 
@@ -181,12 +305,16 @@ router.get("/", async (req, res) => {
     const teams = await prisma.team.findMany({
       select: {
         id: true,
-        name: true,
+        teamName: true,
         createdAt: true,
         members: {
           select: {
             id: true,
             name: true,
+            picture: true,
+            email: true,
+            role: true,
+            teamName: true,
           },
         },
         _count: {
@@ -204,7 +332,7 @@ router.get("/", async (req, res) => {
     // 현재 사용자가 속한 팀이 있는지 표시
     const teamsWithStatus = teams.map((team) => ({
       ...team,
-      isMember: team.id === teamName,
+      isMember: team.teamName === teamName,
       memberCount: team._count.members,
       taskCount: team._count.tasks,
     }));
@@ -231,7 +359,7 @@ router.post("/leave", async (req, res) => {
 
     // 2. 팀 정보 조회
     const team = await prisma.team.findUnique({
-      where: { id: teamName },
+      where: { teamName: teamName },
     });
 
     if (!team) {

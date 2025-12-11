@@ -33,11 +33,14 @@ const authenticate = async (req, res, next) => {
     next();
   } catch (error) {
     console.error("인증 오류:", error);
+
+    if (res.headersSent) {
+      console.error("인증 미들웨어: 응답이 이미 전송되었습니다.");
+      return;
+    }
+
     res.status(401).json({ error: "인증 실패" });
   }
-  console.log("Token received:", token ? "exists" : "missing");
-  console.log("Decoded userId:", decoded?.userId);
-  console.log("User found:", user ? "yes" : "no");
 };
 
 module.exports = authenticate;

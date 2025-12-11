@@ -25,6 +25,7 @@ model Team {
   id        String   @id @default(uuid())
   teamName  String   @unique
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt 
 
   members User[] @relation("TeamMembers")
   tasks   Task[]
