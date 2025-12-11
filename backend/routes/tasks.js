@@ -16,7 +16,7 @@ router.get("/", async (req, res) => {
           error: "팀에 속해있지 않습니다. 먼저 팀에 가입해주세요.",
         });
       }
-      where = { teamName };
+      where = { teamId: teamName };
     } else {
       where = { assigneeId: userId };
     }
@@ -31,7 +31,7 @@ router.get("/", async (req, res) => {
           select: { id: true, name: true, email: true },
         },
         team: {
-          select: { id: true, name: true },
+          select: { id: true, teamName: true },
         },
       },
       orderBy: { createdAt: "desc" },
