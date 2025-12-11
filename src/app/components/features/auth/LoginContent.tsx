@@ -8,13 +8,11 @@ export default function LoginContent() {
   const kakaoLoginImageUrl = "/images/kakao_login_medium_narrow.png";
   const googleLoginImageUrl = "/images/web_light_sq_ctn@1x.png";
   const handleGoogleLogin = () => {
-    // 백엔드 서버의 Google OAuth 엔드포인트로 이동
     window.location.href = `${API_URL}/login`;
   };
 
   const handleKakaoLogin = () => {
-    // 카카오 로그인 (추후 구현)
-    console.log("Kakao login");
+    window.location.href = `${API_URL}/auth/kakao`;
   };
 
   return (
