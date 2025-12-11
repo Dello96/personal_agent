@@ -10,7 +10,22 @@ router.get("/me", async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.userId },
-      include: { team: true },
+      include: {
+        team: {
+          include: {
+            members: {
+              select: {
+                id: true,
+                name: true,
+                picture: true,
+                email: true,
+                role: true,
+                teamName: true,
+              },
+            },
+          },
+        },
+      },
     });
     // user가 null인 경우 체크
     if (!user) {
