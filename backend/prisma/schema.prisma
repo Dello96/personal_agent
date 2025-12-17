@@ -19,6 +19,7 @@ model User {
 
   assignedTasks  Task[] @relation("Assignee")
   assignedTasks2 Task[] @relation("Assigner")
+  participatingTasks TaskParticipant[]
 }
 
 model Team {
@@ -49,7 +50,28 @@ model Task {
   assigner User @relation("Assigner", fields: [assignerId], references: [id])
   team     Team @relation(fields: [teamId], references: [teamName])
 
+  participants  TaskParticipant[]
+  
   statusHistory TaskStatusHistory[]
+}
+
+model TaskParticipant {
+  id        String   @id @default(uuid())
+  taskId    String
+  userId    String
+  role      ParticipantRole @default(PARTICIPANT)  // 역할 구분
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([taskId, userId])  // 같은 업무에 같은 사용자 중복 방지
+}
+
+enum ParticipantRole {
+  OWNER       // 주담당자
+  PARTICIPANT // 참여자
+  REVIEWER    // 검토자
 }
 
 model TaskStatusHistory {

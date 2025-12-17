@@ -47,13 +47,9 @@ router.get("/me", async (req, res) => {
   }
 });
 
-// 팀원 목록 조회 (팀장만)
+// 팀원 목록 조회 (같은 팀원이라면 모두 조회 가능)
 router.get("/team-members", async (req, res) => {
   try {
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(req.user.role)) {
-      return res.status(403).json({ error: "권한이 없습니다" });
-    }
-
     // teamName가 null인 경우 체크
     if (!req.user.teamName) {
       return res.status(400).json({
