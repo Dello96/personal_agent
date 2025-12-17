@@ -2,6 +2,17 @@
 import { apiRequest } from "./users";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
+export interface TaskParticipant {
+  id: string;
+  userId: string;
+  role: "OWNER" | "PARTICIPANT" | "REVIEWER";
+  user: {
+    id: string;
+    name: string;
+    email: string;
+  };
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -29,6 +40,7 @@ export interface Task {
     id: string;
     name: string;
   };
+  participants?: TaskParticipant[];
 }
 
 // 업무 생성
@@ -38,11 +50,17 @@ export const createTask = async (data: {
   assigneeId: string;
   priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   dueDate?: string;
+  participantIds?: string[];
 }): Promise<Task> => {
   return apiRequest("/api/tasks", {
     method: "POST",
     body: JSON.stringify(data),
   });
+};
+
+// 업무 목록 조회
+export const getTasks = async (): Promise<Task[]> => {
+  return apiRequest("/api/tasks"); // GET /api/tasks/
 };
 
 // 업무 상세 조회
