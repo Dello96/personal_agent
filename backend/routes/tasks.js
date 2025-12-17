@@ -10,28 +10,31 @@ router.use(authenticate);
 router.get("/", async (req, res) => {
   try {
     const { userId, role, teamName } = req.user;
+    let where = {};
+
     if (role === "TEAM_LEAD" || role === "MANAGER" || role === "DIRECTOR") {
-      if (!teamName) {
-        return res.status(400).json({
-          error: "팀에 속해있지 않습니다. 먼저 팀에 가입해주세요.",
-        });
-      }
       where = { teamId: teamName };
     } else {
-      where = { assigneeId: userId };
+      // ✅ 일반 팀원: 담당자이거나 참여자인 업무 모두 조회
+      where = {
+        OR: [
+          { assigneeId: userId },
+          { participants: { some: { userId: userId } } },
+        ],
+      };
     }
 
     const tasks = await prisma.task.findMany({
       where,
       include: {
-        assignee: {
-          select: { id: true, name: true, email: true },
-        },
-        assigner: {
-          select: { id: true, name: true, email: true },
-        },
-        team: {
-          select: { id: true, teamName: true },
+        assignee: { select: { id: true, name: true, email: true } },
+        assigner: { select: { id: true, name: true, email: true } },
+        team: { select: { id: true, teamName: true } },
+        // ✅ 참여자 정보 포함
+        participants: {
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+          },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -44,34 +47,99 @@ router.get("/", async (req, res) => {
   }
 });
 
-// 업무 생성
-router.post("/", async (req, res) => {
+// 단일 업무 조회
+router.get("/:id", async (req, res) => {
   try {
-    const { title, description, assigneeId, priority, dueDate } = req.body;
-    const { userId, teamName } = req.user;
-
-    if (!teamName) {
-      return res.status(400).json({
-        error: "팀에 속해있지 않습니다. 먼저 팀에 가입해주세요.",
-      });
-    }
-    const task = await prisma.task.create({
-      data: {
-        title,
-        description,
-        assigneeId,
-        assignerId: userId,
-        teamId: teamName,
-        priority: priority || "MEDIUM",
-        dueDate: dueDate ? new Date(dueDate) : null,
-      },
+    const { id } = req.params;
+    const task = await prisma.task.findUnique({
+      where: { id },
       include: {
-        assignee: true,
-        assigner: true,
+        assignee: { select: { id: true, name: true, email: true } },
+        assigner: { select: { id: true, name: true, email: true } },
+        team: { select: { id: true, teamName: true } },
       },
     });
 
-    res.status(201).json(task);
+    if (!task) {
+      return res.status(404).json({ error: "업무를 찾을 수 없습니다." });
+    }
+
+    res.json(task);
+  } catch (error) {
+    console.error("업무 조회 오류:", error);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+// 업무 생성
+router.post("/", async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      assigneeId,
+      priority,
+      dueDate,
+      participantIds, // ✅ 새로 추가: 참여자 ID 배열
+    } = req.body;
+    const { userId, teamName } = req.user;
+
+    // 트랜잭션으로 업무 + 참여자 함께 생성
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. 업무 생성
+      const task = await tx.task.create({
+        data: {
+          title,
+          description,
+          assigneeId,
+          assignerId: userId,
+          teamId: teamName,
+          priority: priority || "MEDIUM",
+          dueDate: dueDate ? new Date(dueDate) : null,
+          status: "IN_PROGRESS",
+        },
+      });
+
+      // 2. 주담당자를 참여자로 추가 (OWNER 역할)
+      await tx.taskParticipant.create({
+        data: {
+          taskId: task.id,
+          userId: assigneeId,
+          role: "OWNER",
+        },
+      });
+
+      // 3. 추가 참여자들 생성 (PARTICIPANT 역할)
+      if (participantIds && participantIds.length > 0) {
+        const participantData = participantIds
+          .filter((id) => id !== assigneeId) // 주담당자 제외
+          .map((userId) => ({
+            taskId: task.id,
+            userId,
+            role: "PARTICIPANT",
+          }));
+
+        await tx.taskParticipant.createMany({
+          data: participantData,
+        });
+      }
+
+      // 4. 참여자 정보 포함하여 반환
+      return tx.task.findUnique({
+        where: { id: task.id },
+        include: {
+          assignee: true,
+          assigner: true,
+          participants: {
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+            },
+          },
+        },
+      });
+    });
+
+    res.status(201).json(result);
   } catch (error) {
     console.error("업무 생성 오류:", error);
     res.status(500).json({ error: "서버 오류" });
