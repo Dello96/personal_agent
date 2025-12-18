@@ -45,6 +45,17 @@ export default function Home() {
     router.push("/");
   };
 
+  const getMyRoleInTask = (task: Task): "담당자" | "참여자" | null => {
+    if (task.assigneeId === user?.id) return "담당자";
+
+    const isParticipant = task.participants?.some(
+      (p) => p.userId === user?.id && p.role !== "OWNER"
+    );
+    if (isParticipant) return "참여자";
+
+    return null;
+  };
+
   const getRoleLabel = (role: string) => {
     const roleMap: Record<string, string> = {
       MEMBER: "팀원",
@@ -432,54 +443,72 @@ export default function Home() {
                   </div>
                 ) : (
                   <ul className="space-y-3">
-                    {displayTasks.map((task) => (
-                      <li
-                        key={task.id}
-                        className="p-4 bg-gray-50 rounded-2xl hover:bg-purple-50 transition-colors cursor-pointer border border-gray-100"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span
-                                className={`w-2 h-2 rounded-full ${
-                                  getPriorityLabel(task.priority).color
-                                }`}
-                              ></span>
-                              <h4 className="font-semibold text-gray-800">
-                                {task.title}
-                              </h4>
-                            </div>
-                            {task.description && (
-                              <p className="text-gray-500 text-sm mb-2 line-clamp-2">
-                                {task.description}
-                              </p>
-                            )}
-                            <div className="flex items-center gap-4 text-xs text-gray-400">
-                              {task.dueDate && (
-                                <span className="flex items-center gap-1">
-                                  📅{" "}
-                                  {new Date(task.dueDate).toLocaleDateString()}
-                                </span>
+                    {displayTasks.map((task) => {
+                      const myRole = getMyRoleInTask(task);
+                      return (
+                        <li
+                          key={task.id}
+                          className="p-4 bg-gray-50 rounded-2xl hover:bg-purple-50 transition-colors cursor-pointer border border-gray-100"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span
+                                  className={`w-2 h-2 rounded-full ${
+                                    getPriorityLabel(task.priority).color
+                                  }`}
+                                ></span>
+                                <h4 className="font-semibold text-gray-800">
+                                  {task.title}
+                                </h4>
+                              </div>
+                              {task.description && (
+                                <p className="text-gray-500 text-sm mb-2 line-clamp-2">
+                                  {task.description}
+                                </p>
                               )}
-                              <span className="flex items-center gap-1">
-                                🏷️ {getPriorityLabel(task.priority).label}
+                              <div className="flex items-center gap-4 text-xs text-gray-400">
+                                {task.dueDate && (
+                                  <span className="flex items-center gap-1">
+                                    📅{" "}
+                                    {new Date(
+                                      task.dueDate
+                                    ).toLocaleDateString()}
+                                  </span>
+                                )}
+                                <span className="flex items-center gap-1">
+                                  🏷️ {getPriorityLabel(task.priority).label}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <span
+                                className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                  activeTab === "IN_PROGRESS"
+                                    ? "bg-yellow-100 text-yellow-700"
+                                    : "bg-green-100 text-green-700"
+                                }`}
+                              >
+                                {activeTab === "IN_PROGRESS"
+                                  ? "진행중"
+                                  : "완료"}
                               </span>
                             </div>
                           </div>
-                          <div className="flex flex-col items-end gap-2">
+                          {myRole && (
                             <span
-                              className={`px-3 py-1 rounded-full text-xs font-medium ${
-                                activeTab === "IN_PROGRESS"
-                                  ? "bg-yellow-100 text-yellow-700"
-                                  : "bg-green-100 text-green-700"
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                myRole === "담당자"
+                                  ? "bg-purple-100 text-purple-700"
+                                  : "bg-blue-100 text-blue-700"
                               }`}
                             >
-                              {activeTab === "IN_PROGRESS" ? "진행중" : "완료"}
+                              {myRole}
                             </span>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>
