@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
-import { getTask, getTasks, Task } from "@/lib/api/tasks";
+import { getTasks, Task } from "@/lib/api/tasks";
 import { getTeamMembers, TeamMember } from "@/lib/api/users";
 
-export default function Home() {
+function HomeContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const loginStatus = searchParams.get("login");
@@ -447,6 +447,7 @@ export default function Home() {
                       const myRole = getMyRoleInTask(task);
                       return (
                         <li
+                          onClick={() => router.push(`/tasksDetail/${task.id}`)}
                           key={task.id}
                           className="p-4 bg-gray-50 rounded-2xl hover:bg-purple-50 transition-colors cursor-pointer border border-gray-100"
                         >
@@ -621,5 +622,19 @@ export default function Home() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center">
+          <div className="text-[#7F55B1] text-lg">로딩 중...</div>
+        </div>
+      }
+    >
+      <HomeContent />
+    </Suspense>
   );
 }
