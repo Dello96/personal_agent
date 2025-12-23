@@ -11,7 +11,10 @@ const googleClientId =
 const googlePassWord = process.env.GOOGLE_CLIENT_SECRET;
 const kakaoClientId = process.env.KAKAO_CLIENT_ID;
 const kakaoSecret = process.env.KAKAO_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI = "http://localhost:8080/login/redirect";
+
+// 백엔드 URL (환경 변수에서 가져오거나 기본값 사용)
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8080";
+const GOOGLE_REDIRECT_URI = `${BACKEND_URL}/login/redirect`;
 
 app.get("/", function (req, res) {
   res.send(`
@@ -45,7 +48,7 @@ app.get("/login", (req, res) => {
 });
 
 app.get("/auth/kakao", (req, res) => {
-  const KAKAO_REDIRECT_URI = "http://localhost:8080/auth/kakao/callback";
+  const KAKAO_REDIRECT_URI = `${BACKEND_URL}/auth/kakao/callback`;
 
   let url = "https://kauth.kakao.com/oauth/authorize";
   url += `?client_id=${kakaoClientId}`;
