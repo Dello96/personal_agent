@@ -1,0 +1,56 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches: [main]
+  # 수동 실행도 가능하게
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            echo "🔄 Starting deployment..."
+            
+            # 프로젝트 디렉토리로 이동
+            cd ~/service_project
+            
+            # 최신 코드 가져오기
+            echo "📥 Pulling latest code..."
+            git fetch origin main
+            git reset --hard origin/main
+            
+            # 프론트엔드 빌드
+            echo "🏗️ Building frontend..."
+            yarn install --frozen-lockfile
+            yarn build
+            
+            # 백엔드 의존성 설치
+            echo "📦 Installing backend dependencies..."
+            cd backend
+            yarn install --frozen-lockfile
+            
+            # Prisma 클라이언트 재생성
+            echo "🗄️ Generating Prisma client..."
+            yarn prisma generate
+            
+            # PM2로 애플리케이션 재시작
+            echo "🔄 Restarting applications..."
+            cd ~/service_project
+            pm2 restart frontend || pm2 start yarn --name "frontend" -- start
+            
+            cd backend
+            pm2 restart backend || pm2 start server.js --name "backend"
+            
+            # 상태 확인
+            echo "✅ Deployment completed!"
+            pm2 status
+

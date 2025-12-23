@@ -447,6 +447,7 @@ export default function Home() {
                       const myRole = getMyRoleInTask(task);
                       return (
                         <li
+                          onClick={() => router.push(`/tasksDetail/${task.id}`)}
                           key={task.id}
                           className="p-4 bg-gray-50 rounded-2xl hover:bg-purple-50 transition-colors cursor-pointer border border-gray-100"
                         >
