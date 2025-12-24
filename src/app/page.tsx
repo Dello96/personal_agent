@@ -267,6 +267,12 @@ function HomeContent() {
           >
             팀 생성하기
           </button>
+          <button
+            onClick={handleLogout}
+            className="w-full py-3 bg-white border-2 border-[#7F55B1] text-[#FF4646] rounded-xl font-medium hover:bg-violet-50 transition-all"
+          >
+            로그아웃
+          </button>
         </div>
       </div>
     );
