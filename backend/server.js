@@ -1,5 +1,14 @@
 const dotenv = require("dotenv");
+
+// 상대 경로 먼저 시도 (로컬 환경)
 dotenv.config({ path: "../.env.local" });
+
+// 환경 변수가 없으면 절대 경로 시도 (EC2 환경)
+if (!process.env.BACKEND_URL) {
+  dotenv.config({ path: "/home/ubuntu/personal_agent/.env.local" });
+}
+
+console.log("✅ BACKEND_URL:", process.env.BACKEND_URL || "not set");
 const jwt = require("jsonwebtoken");
 const express = require("express");
 const axios = require("axios");
