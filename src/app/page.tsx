@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
 import { getTasks, Task } from "@/lib/api/tasks";
 import { getTeamMembers, TeamMember } from "@/lib/api/users";
+import Image from "next/image";
 
 function HomeContent() {
   const searchParams = useSearchParams();
@@ -227,12 +228,62 @@ function HomeContent() {
           <p className="text-gray-500 mb-8">
             로그인하시면 오늘의 업무를 확인할 수 있습니다.
           </p>
+
+          {/* 일반 로그인 버튼 */}
           <button
-            onClick={loginAction}
-            className="w-full py-3 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white rounded-xl font-medium hover:from-[#6B479A] hover:to-purple-500 transition-all shadow-lg hover:shadow-xl"
+            onClick={() => router.push("/auth/login")}
+            className="w-full py-3 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white rounded-xl font-medium hover:from-[#6B479A] hover:to-purple-500 transition-all shadow-lg hover:shadow-xl mb-3"
           >
             로그인하기
           </button>
+
+          {/* 회원가입 버튼 */}
+          <button
+            onClick={() => router.push("/auth/register")}
+            className="w-full py-3 bg-white border-2 border-[#7F55B1] text-[#7F55B1] rounded-xl font-medium hover:bg-violet-50 transition-all mb-6"
+          >
+            회원가입
+          </button>
+
+          {/* 구분선 */}
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-4 bg-white text-gray-500">또는</span>
+            </div>
+          </div>
+
+          {/* 소셜 로그인 버튼 */}
+          <div className="space-y-3">
+            <button
+              onClick={() =>
+                (window.location.href = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}/login`)
+              }
+              className="w-full py-3 bg-white border border-gray-200 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
+            >
+              <Image
+                src="/images/web_light_sq_ctn@1x.png"
+                alt="google 로그인"
+                width={183}
+                height={45}
+              />
+            </button>
+            <button
+              onClick={() =>
+                (window.location.href = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}/auth/kakao`)
+              }
+              className="w-full py-3 bg-[#FEE500] text-[#3C1E1E] rounded-xl font-medium hover:bg-[#F5DC00] transition-all flex items-center justify-center gap-2"
+            >
+              <Image
+                src="/images/kakao_login_medium_narrow.png"
+                alt="kakao 로그인"
+                width={183}
+                height={45}
+              />
+            </button>
+          </div>
         </div>
       </div>
     );

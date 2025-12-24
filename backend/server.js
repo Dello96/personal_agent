@@ -39,10 +39,12 @@ app.use(express.json());
 const tasksRoutes = require("./routes/tasks");
 const teamRoutes = require("./routes/team");
 const usersRoutes = require("./routes/users");
+const authRoutes = require("./routes/auth");
 
 app.use("/api/tasks", tasksRoutes);
 app.use("/api/team", teamRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/auth", authRoutes);
 
 // Prisma 클라이언트 import
 const prisma = require("./db/prisma");
