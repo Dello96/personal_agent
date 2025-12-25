@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { login } from "@/lib/api/auth";
 import { useAuthStore } from "@/app/stores/authStore";
+import { RouteMatcher } from "next/dist/server/route-matchers/route-matcher";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -55,25 +56,19 @@ export default function LoginContent() {
         password: formData.password,
       });
 
-      // 로그인 상태 저장
-      useAuthStore.getState().login(
-        {
+      const userInfo = encodeURIComponent(
+        JSON.stringify({
           id: result.user.id,
           email: result.user.email,
           name: result.user.name,
           picture: result.user.picture ?? null,
-          role: result.user.role as
-            | "MEMBER"
-            | "TEAM_LEAD"
-            | "MANAGER"
-            | "DIRECTOR",
+          role: result.user.role,
           teamName: result.user.teamName ?? null,
-        },
-        result.token
+        })
       );
 
-      // 메인 페이지로 이동
-      router.push("/");
+      // 메인 페이지로 이동 (완전 새로고침)
+      window.location.href = `/?login=success&token=${result.token}&user=${userInfo}`;
     } catch (error) {
       if (error instanceof Error) {
         setError(error.message);

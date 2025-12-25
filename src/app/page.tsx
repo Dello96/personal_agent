@@ -207,10 +207,10 @@ function HomeContent() {
     activeTab === "IN_PROGRESS" ? inProgressTasks : completedTasks;
 
   // 로그인 안 된 경우
-  if (!hasHydrated) {
+  if (loginStatus === "success" && !isLoggedIn) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center">
-        <div className="text-[#7F55B1] text-lg">로딩 중...</div>
+        <div className="text-[#7F55B1] text-lg">로그인 처리 중...</div>
       </div>
     );
   }
