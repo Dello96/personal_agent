@@ -2,7 +2,9 @@
 
 "use client";
 
-import { useState } from "react";
+import { useAuthStore } from "@/app/stores/authStore";
+import { getTask } from "@/lib/api/tasks";
+import { useEffect, useState } from "react";
 
 // 임시 타입 정의 (나중에 실제 데이터로 교체)
 interface TaskData {
@@ -37,33 +39,33 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
   const [activeTab, setActiveTab] = useState<"detail" | "history" | "members">(
     "detail"
   );
-
-  // 임시 데이터 (나중에 props 또는 API로 교체)
-  const task: TaskData = {
-    id: "1",
-    title: "프로젝트 기획서 작성",
-    description:
-      "2024년 신규 프로젝트에 대한 기획서를 작성합니다. 시장 분석, 경쟁사 분석, 예산 계획 등을 포함해야 합니다.",
-    status: "IN_PROGRESS",
-    priority: "HIGH",
-    progress: 65,
-    dueDate: "2024-12-25",
-    assignee: {
-      name: "홍길동",
-      email: "hong@example.com",
-    },
-    assigner: {
-      name: "김팀장",
-      email: "kim@example.com",
-    },
-    participants: [
-      { id: "1", name: "이영희" },
-      { id: "2", name: "박철수" },
-      { id: "3", name: "최민수" },
-    ],
-    createdAt: "2024-12-10",
+  const [loading, setLoading] = useState(true);
+  const [task, setTask] = useState<TaskData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const user = useAuthStore((state) => state.user);
+  const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+  const formatDate = (dateString: string | null | undefined): string => {
+    if (!dateString) return "";
+    return new Date(dateString).toISOString().slice(0, 10);
   };
 
+  useEffect(() => {
+    const fetchTask = async () => {
+      try {
+        setLoading(true);
+        const data = await getTask(taskId);
+        setTask(data);
+        setError(null);
+      } catch (err) {
+        console.error("업무 조회 실패:", err);
+        setError("업무를 불러오는데 실패했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTask();
+  }, [isLoggedIn, user?.teamName]);
   // 상태 라벨
   const statusLabels: Record<string, { label: string; color: string }> = {
     PENDING: { label: "대기중", color: "bg-gray-400" },
@@ -95,27 +97,28 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
     <div className="bg-white rounded-3xl p-8 shadow-sm">
       {/* 상단 헤더 영역 */}
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="text-2xl font-bold text-gray-800">{task.title}</h1>
+        {/* <div className="flex items-center justify-between mb-2">
+          <h1 className="text-2xl font-bold text-gray-800">{task}</h1>
           <div className="flex items-center gap-2">
             <span
               className={`px-3 py-1 rounded-full text-white text-sm ${
-                statusLabels[task.status].color
+                statusLabels[task]
               }`}
             >
-              {statusLabels[task.status].label}
+              {statusLabels[task]}
             </span>
             <span
               className={`px-3 py-1 rounded-full text-white text-sm ${
-                priorityLabels[task.priority].color
+                priorityLabels[task].color
               }`}
             >
-              {priorityLabels[task.priority].label}
+              {priorityLabels[task]}
             </span>
           </div>
-        </div>
+        </div> */}
         <p className="text-gray-500 text-sm">
-          생성일: {task.createdAt} · 마감일: {task.dueDate}
+          생성일: {formatDate(task?.createdAt)} · 마감일:{" "}
+          {formatDate(task?.dueDate)}
         </p>
       </div>
 
@@ -177,7 +180,7 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
       <div className="mb-8">
         <div className="flex items-baseline gap-3 mb-2">
           <span className="text-4xl font-bold text-gray-800">
-            {task.progress}%
+            {task?.progress || 0}%
           </span>
           <span className="text-green-500 text-sm flex items-center gap-1">
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -196,7 +199,7 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
         <div className="w-full bg-gray-100 rounded-full h-3 mb-6">
           <div
             className="bg-gradient-to-r from-[#7F55B1] to-purple-400 h-3 rounded-full transition-all"
-            style={{ width: `${task.progress}%` }}
+            style={{ width: `${task?.progress || 0}%` }}
           ></div>
         </div>
       </div>
@@ -234,19 +237,19 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-full flex items-center justify-center">
               <span className="text-white text-sm font-medium">
-                {task.assignee.name.charAt(0)}
+                {task?.assignee?.name}
               </span>
             </div>
             <div>
               <p className="text-gray-800 font-medium text-sm">
-                {task.assignee.name}
+                {task?.assignee.name}
               </p>
-              <p className="text-gray-400 text-xs">{task.assignee.email}</p>
+              <p className="text-gray-400 text-xs">{task?.assignee?.email}</p>
             </div>
           </div>
           <div className="border-t border-gray-200 pt-3">
             <p className="text-gray-400 text-xs mb-1">업무 지시자</p>
-            <p className="text-gray-600 text-sm">{task.assigner.name}</p>
+            <p className="text-gray-600 text-sm">{task?.assigner?.name}</p>
           </div>
         </div>
 
@@ -254,7 +257,7 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
         <div className="bg-gray-50 rounded-2xl p-5">
           <h3 className="text-gray-800 font-semibold mb-4">업무 설명</h3>
           <p className="text-gray-600 text-sm leading-relaxed line-clamp-4">
-            {task.description}
+            {task?.description}
           </p>
           <button className="text-[#7F55B1] text-sm mt-3 hover:underline">
             자세히 보기
@@ -265,18 +268,18 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
         <div className="bg-gray-50 rounded-2xl p-5">
           <h3 className="text-gray-800 font-semibold mb-4">참여자</h3>
           <div className="space-y-3">
-            {task.participants.slice(0, 3).map((participant) => (
+            {task?.participants.slice(0, 3).map((participant) => (
               <div key={participant.id} className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center">
                   <span className="text-gray-600 text-xs">
-                    {participant.name.charAt(0)}
+                    {participant.name}
                   </span>
                 </div>
                 <p className="text-gray-700 text-sm">{participant.name}</p>
               </div>
             ))}
           </div>
-          {task.participants.length > 3 && (
+          {task?.participants && task.participants.length > 3 && (
             <p className="text-gray-400 text-xs mt-3">
               +{task.participants.length - 3}명 더 보기
             </p>

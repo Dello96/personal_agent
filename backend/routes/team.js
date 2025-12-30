@@ -297,7 +297,7 @@ router.post("/join", async (req, res) => {
 });
 
 // 가입 가능한 팀 목록 조회
-router.get("/", async (req, res) => {
+router.get("/getTeam", async (req, res) => {
   try {
     const { userId, teamName } = req.user;
 

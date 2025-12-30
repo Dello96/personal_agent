@@ -57,6 +57,11 @@ router.get("/:id", async (req, res) => {
         assignee: { select: { id: true, name: true, email: true } },
         assigner: { select: { id: true, name: true, email: true } },
         team: { select: { id: true, teamName: true } },
+        participants: {
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+          },
+        },
       },
     });
 

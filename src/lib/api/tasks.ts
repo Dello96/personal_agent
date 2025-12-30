@@ -64,7 +64,7 @@ export const getTasks = async (): Promise<Task[]> => {
 };
 
 // 업무 상세 조회
-export const getTask = async (id: string) => {
+export const getTask = async (id: string | undefined) => {
   return apiRequest(`/api/tasks/${id}`);
 };
 

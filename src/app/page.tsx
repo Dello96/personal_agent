@@ -207,10 +207,10 @@ function HomeContent() {
     activeTab === "IN_PROGRESS" ? inProgressTasks : completedTasks;
 
   // 로그인 안 된 경우
-  if (loginStatus === "success" && !isLoggedIn) {
+  if (!hasHydrated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center">
-        <div className="text-[#7F55B1] text-lg">로그인 처리 중...</div>
+        <div className="text-[#7F55B1] text-lg">로딩 중...</div>
       </div>
     );
   }
@@ -437,7 +437,7 @@ function HomeContent() {
                     onClick={workAssignment}
                     className="px-4 py-2 bg-white text-[#7F55B1] rounded-xl font-medium hover:bg-purple-50 transition-colors text-sm"
                   >
-                    + 업무 전달하기
+                    + 업무 만들기
                   </button>
                 )}
               </div>

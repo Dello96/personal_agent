@@ -324,6 +324,41 @@ export default function TaskForm() {
                   </svg>
                 </button>
 
+                {/* 선택된 참여자 목록 표시 */}
+                {participantIds.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {participantIds.map((id) => {
+                      const member = teamMembers.find((m) => m.id === id);
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1 px-3 py-1 bg-violet-100 text-[#7F55B1] rounded-full text-sm"
+                        >
+                          {member?.name}
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleParticipant(id);
+                            }}
+                            className="hover:text-red-500 ml-1 cursor-pointer"
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                toggleParticipant(id);
+                              }
+                            }}
+                          >
+                            ✕
+                          </span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {isParticipantOpen && (
                   <div className="absolute z-20 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-60 overflow-y-auto">
                     {/* 전체 선택/해제 버튼 */}
@@ -391,30 +426,6 @@ export default function TaskForm() {
                               {member.email}
                             </p>
                           </div>
-                          {participantIds.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {participantIds.map((id) => {
-                                const member = teamMembers.find(
-                                  (m) => m.id === id
-                                );
-                                return (
-                                  <span
-                                    key={id}
-                                    className="inline-flex items-center gap-1 px-3 py-1 bg-violet-100 text-[#7F55B1] rounded-full text-sm"
-                                  >
-                                    {member?.name}
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleParticipant(id)}
-                                      className="hover:text-red-500 ml-1"
-                                    >
-                                      ✕
-                                    </button>
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          )}
                         </button>
                       ))
                     )}
@@ -540,7 +551,7 @@ export default function TaskForm() {
                     처리 중...
                   </span>
                 ) : (
-                  "업무 전달하기"
+                  "업무 만들기"
                 )}
               </button>
             </form>
