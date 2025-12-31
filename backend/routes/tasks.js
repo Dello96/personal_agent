@@ -85,7 +85,8 @@ router.post("/", async (req, res) => {
       assigneeId,
       priority,
       dueDate,
-      participantIds, // ✅ 새로 추가: 참여자 ID 배열
+      participantIds,
+      referenceImageUrls,
     } = req.body;
     const { userId, teamName } = req.user;
 
@@ -102,6 +103,7 @@ router.post("/", async (req, res) => {
           priority: priority || "MEDIUM",
           dueDate: dueDate ? new Date(dueDate) : null,
           status: "IN_PROGRESS",
+          referenceImageUrls: referenceImageUrls || [],
         },
       });
 
@@ -150,5 +152,7 @@ router.post("/", async (req, res) => {
     res.status(500).json({ error: "서버 오류" });
   }
 });
+
+router.put("/:id/status", async (req, res) => {});
 
 module.exports = router;

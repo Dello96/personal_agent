@@ -54,6 +54,7 @@ model Task {
   participants  TaskParticipant[]
   
   statusHistory TaskStatusHistory[]
+  referenceImageUrls String[] @default([])
 }
 
 model TaskParticipant {
@@ -95,10 +96,12 @@ enum Role {
 
 enum TaskStatus {
   PENDING
+  NOW
   IN_PROGRESS
   REVIEW
   COMPLETED
   CANCELLED
+  ENDING
 }
 
 enum Priority {

@@ -17,8 +17,6 @@ export interface Task {
   id: string;
   title: string;
   description: string | null;
-  status: string;
-  priority: string;
   assigneeId: string;
   assignerId: string;
   teamName: string;
@@ -26,6 +24,9 @@ export interface Task {
   updatedAt: string;
   dueDate: string | null;
   completedAt: string | null;
+  status: "PENDING" | "IN_PROGRESS" | "REVIEW" | "COMPLETED";
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  progress: number;
   assignee?: {
     id: string;
     name: string;
@@ -41,6 +42,7 @@ export interface Task {
     name: string;
   };
   participants?: TaskParticipant[];
+  referenceImageUrls?: string[];
 }
 
 // 업무 생성
@@ -51,6 +53,7 @@ export const createTask = async (data: {
   priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   dueDate?: string;
   participantIds?: string[];
+  referenceImageUrls?: string[];
 }): Promise<Task> => {
   return apiRequest("/api/tasks", {
     method: "POST",

@@ -46,6 +46,9 @@ app.use("/api/team", teamRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/auth", authRoutes);
 
+const uploadRoutes = require("./routes/upload");
+app.use("/api/upload", uploadRoutes);
+
 // Prisma 클라이언트 import
 const prisma = require("./db/prisma");
 

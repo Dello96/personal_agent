@@ -5,30 +5,32 @@
 import { useAuthStore } from "@/app/stores/authStore";
 import { getTask } from "@/lib/api/tasks";
 import { useEffect, useState } from "react";
+import { Task } from "@/lib/api/tasks";
 
 // 임시 타입 정의 (나중에 실제 데이터로 교체)
-interface TaskData {
-  id: string;
-  title: string;
-  description: string;
-  status: "PENDING" | "IN_PROGRESS" | "REVIEW" | "COMPLETED";
-  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-  progress: number;
-  dueDate: string;
-  assignee: {
-    name: string;
-    email: string;
-  };
-  assigner: {
-    name: string;
-    email: string;
-  };
-  participants: {
-    id: string;
-    name: string;
-  }[];
-  createdAt: string;
-}
+// interface TaskData {
+//   id: string;
+//   title: string;
+//   description: string;
+//   status: "PENDING" | "IN_PROGRESS" | "REVIEW" | "COMPLETED";
+//   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+//   progress: number;
+//   dueDate: string;
+//   assignee: {
+//     name: string;
+//     email: string;
+//   };
+//   assigner: {
+//     name: string;
+//     email: string;
+//   };
+//   participants: {
+//     id: string;
+//     name: string;
+//   }[];
+//   createdAt: string;
+//   referenceImageUrls?: string[];
+// }
 
 interface TaskDetailProps {
   taskId: string;
@@ -40,10 +42,11 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
     "detail"
   );
   const [loading, setLoading] = useState(true);
-  const [task, setTask] = useState<TaskData | null>(null);
+  const [task, setTask] = useState<Task | null>(null);
   const [error, setError] = useState<string | null>(null);
   const user = useAuthStore((state) => state.user);
   const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+  const [taskStatus, setTaskStatus] = useState("OFF");
   const formatDate = (dateString: string | null | undefined): string => {
     if (!dateString) return "";
     return new Date(dateString).toISOString().slice(0, 10);
@@ -66,21 +69,6 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
 
     fetchTask();
   }, [isLoggedIn, user?.teamName]);
-  // 상태 라벨
-  const statusLabels: Record<string, { label: string; color: string }> = {
-    PENDING: { label: "대기중", color: "bg-gray-400" },
-    IN_PROGRESS: { label: "진행중", color: "bg-blue-500" },
-    REVIEW: { label: "검토중", color: "bg-yellow-500" },
-    COMPLETED: { label: "완료", color: "bg-green-500" },
-  };
-
-  // 우선순위 라벨
-  const priorityLabels: Record<string, { label: string; color: string }> = {
-    LOW: { label: "낮음", color: "bg-gray-400" },
-    MEDIUM: { label: "보통", color: "bg-blue-400" },
-    HIGH: { label: "높음", color: "bg-orange-400" },
-    URGENT: { label: "긴급", color: "bg-red-500" },
-  };
 
   // 진행률 바 데이터 (일별 진행 상황 - 임시)
   const progressData = [
@@ -92,6 +80,14 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
     { day: "토", value: 65 },
     { day: "일", value: 65 },
   ];
+
+  const taskStatusHandler = () => {
+    if (taskStatus === "OFF") {
+      setTaskStatus("ON");
+    } else {
+      setTaskStatus("완료");
+    }
+  };
 
   return (
     <div className="bg-white rounded-3xl p-8 shadow-sm">
@@ -159,20 +155,7 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
 
         {/* 드롭다운 (상태 변경용) */}
         <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-full text-sm text-gray-600 hover:border-[#7F55B1] transition-all">
-          상태 변경
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 9l-7 7-7-7"
-            />
-          </svg>
+          {taskStatus}
         </button>
       </div>
 
@@ -242,7 +225,7 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
             </div>
             <div>
               <p className="text-gray-800 font-medium text-sm">
-                {task?.assignee.name}
+                {task?.assignee?.name}
               </p>
               <p className="text-gray-400 text-xs">{task?.assignee?.email}</p>
             </div>
@@ -268,14 +251,14 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
         <div className="bg-gray-50 rounded-2xl p-5">
           <h3 className="text-gray-800 font-semibold mb-4">참여자</h3>
           <div className="space-y-3">
-            {task?.participants.slice(0, 3).map((participant) => (
+            {task?.participants?.slice(0, 3).map((participant) => (
               <div key={participant.id} className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center">
                   <span className="text-gray-600 text-xs">
-                    {participant.name}
+                    {participant.user.name}
                   </span>
                 </div>
-                <p className="text-gray-700 text-sm">{participant.name}</p>
+                <p className="text-gray-700 text-sm">{participant.user.name}</p>
               </div>
             ))}
           </div>
@@ -285,6 +268,42 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
             </p>
           )}
         </div>
+        {task?.referenceImageUrls && task.referenceImageUrls.length > 0 && (
+          <div className="mt-8">
+            <h3 className="text-gray-800 font-semibold mb-4">
+              레퍼런스 이미지
+            </h3>
+            <div className="grid grid-cols-3 gap-4">
+              {task.referenceImageUrls.map(
+                (imageUrl: string, index: number) => (
+                  <div
+                    key={index}
+                    className="relative group cursor-pointer"
+                    onClick={() => {
+                      // 이미지 확대 모달 (선택사항)
+                      window.open(imageUrl, "_blank");
+                    }}
+                  >
+                    <img
+                      src={imageUrl}
+                      alt={`레퍼런스 이미지 ${index + 1}`}
+                      className="w-full h-48 object-cover rounded-lg border border-gray-200 hover:border-[#7F55B1] transition-all"
+                      onError={(e) => {
+                        // 이미지 로드 실패 시 대체 이미지
+                        e.currentTarget.src = "/images/placeholder.png";
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
+                      <span className="text-white opacity-0 group-hover:opacity-100 text-sm">
+                        클릭하여 확대
+                      </span>
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

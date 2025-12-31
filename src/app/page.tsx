@@ -29,9 +29,9 @@ function HomeContent() {
   const [activeMenu, setActiveMenu] = useState("진행중인 업무");
 
   // 업무 상태 탭
-  const [activeTab, setActiveTab] = useState<"IN_PROGRESS" | "COMPLETED">(
-    "IN_PROGRESS"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "NOW" | "IN_PROGRESS" | "COMPLETED"
+  >("NOW");
 
   const goToTeamJoin = () => {
     router.push("/team/join");
@@ -199,12 +199,15 @@ function HomeContent() {
   });
 
   // 탭별 업무 필터링
-  const inProgressTasks = tasks.filter(
-    (t) => t.status === "IN_PROGRESS" || t.status === "PENDING"
-  );
-  const completedTasks = tasks.filter((t) => t.status === "COMPLETED");
+  const nowTasks = tasks.filter((t) => t.status === "PENDING"); // 지금까지 하던일
+  const inProgressTasks = tasks.filter((t) => t.status === "IN_PROGRESS"); // 진행중
+  const completedTasks = tasks.filter((t) => t.status === "COMPLETED"); // 완료
   const displayTasks =
-    activeTab === "IN_PROGRESS" ? inProgressTasks : completedTasks;
+    activeTab === "NOW"
+      ? nowTasks
+      : activeTab === "IN_PROGRESS"
+        ? inProgressTasks
+        : completedTasks;
 
   // 로그인 안 된 경우
   if (!hasHydrated) {
@@ -447,6 +450,25 @@ function HomeContent() {
             <div className="bg-white rounded-3xl shadow-sm overflow-hidden">
               {/* 탭 헤더 */}
               <div className="flex border-b border-gray-100">
+                {/* 1. 지금까지 하던일 탭 */}
+                <button
+                  onClick={() => setActiveTab("NOW")}
+                  className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
+                    activeTab === "NOW"
+                      ? "text-[#7F55B1] border-b-2 border-[#7F55B1] bg-purple-50"
+                      : "text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <span>📋</span>
+                    <span>지금까지 하던일</span>
+                    <span className="px-2 py-0.5 bg-gray-500 text-white text-xs rounded-full">
+                      {nowTasks.length}
+                    </span>
+                  </div>
+                </button>
+
+                {/* 2. 진행중 탭 */}
                 <button
                   onClick={() => setActiveTab("IN_PROGRESS")}
                   className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
@@ -463,6 +485,8 @@ function HomeContent() {
                     </span>
                   </div>
                 </button>
+
+                {/* 3. 완료 탭 */}
                 <button
                   onClick={() => setActiveTab("COMPLETED")}
                   className={`flex-1 py-4 px-6 text-center font-medium transition-all ${

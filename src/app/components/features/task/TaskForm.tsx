@@ -7,6 +7,7 @@ import { createTask } from "@/lib/api/tasks";
 import { getTeamMembers, TeamMember } from "@/lib/api/users";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
+import { uploadImage, uploadMultipleImages } from "@/lib/api/upload";
 
 export default function TaskForm() {
   const router = useRouter();
@@ -26,12 +27,114 @@ export default function TaskForm() {
   const [isParticipantOpen, setIsParticipantOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [participantIds, setParticipantIds] = useState<string[]>([]);
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
 
   const priorityLabels: Record<string, { label: string; color: string }> = {
     LOW: { label: "낮음", color: "bg-gray-400" },
     MEDIUM: { label: "보통", color: "bg-blue-400" },
     HIGH: { label: "높음", color: "bg-orange-400" },
     URGENT: { label: "긴급", color: "bg-red-500" },
+  };
+
+  // 파일 선택 핸들러
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    // 1. 파일 개수 제한 확인 (최대 5개)
+    const newFiles = Array.from(files).slice(0, 5 - selectedImages.length);
+
+    if (newFiles.length === 0) {
+      alert("최대 5개의 이미지만 업로드할 수 있습니다.");
+      return;
+    }
+
+    // 2. 파일 검증
+    const validFiles: File[] = [];
+    const invalidFiles: string[] = [];
+
+    newFiles.forEach((file) => {
+      // 파일 타입 검증
+      if (!file.type.startsWith("image/")) {
+        invalidFiles.push(`${file.name}: 이미지 파일만 가능합니다.`);
+        return;
+      }
+
+      // 파일 크기 검증 (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        invalidFiles.push(
+          `${file.name}: 파일 크기는 5MB를 초과할 수 없습니다.`
+        );
+        return;
+      }
+
+      validFiles.push(file);
+    });
+
+    // 3. 에러 메시지 표시
+    if (invalidFiles.length > 0) {
+      alert(invalidFiles.join("\n"));
+    }
+
+    // 4. 유효한 파일들 추가
+    if (validFiles.length > 0) {
+      setSelectedImages((prev) => [...prev, ...validFiles]);
+
+      // 5. 미리보기 생성
+      validFiles.forEach((file) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreviews((prev) => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // 6. input 초기화 (같은 파일 다시 선택 가능하도록)
+    e.target.value = "";
+  };
+
+  // 이미지 삭제 핸들러
+  const handleImageRemove = (index: number) => {
+    setSelectedImages((prev) => prev.filter((_, i) => i !== index));
+    setImagePreviews((prev) => prev.filter((_, i) => i !== index));
+    // 업로드된 이미지도 삭제
+    setUploadedImageUrls((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // 이미지 업로드 함수
+  const uploadImages = async (): Promise<string[]> => {
+    if (selectedImages.length === 0) {
+      return [];
+    }
+
+    try {
+      setUploadingImages(true);
+      setUploadProgress(0);
+
+      // 각 이미지를 순차적으로 업로드 (진행률 표시를 위해)
+      const uploadedUrls: string[] = [];
+
+      for (let i = 0; i < selectedImages.length; i++) {
+        const url = await uploadImage(selectedImages[i]);
+        uploadedUrls.push(url);
+        setUploadProgress(((i + 1) / selectedImages.length) * 100);
+      }
+
+      setUploadedImageUrls(uploadedUrls);
+      return uploadedUrls;
+    } catch (error) {
+      console.error("이미지 업로드 실패:", error);
+      alert("이미지 업로드에 실패했습니다.");
+      throw error;
+    } finally {
+      setUploadingImages(false);
+      setUploadProgress(0);
+    }
   };
 
   const toggleParticipant = (memberId: string) => {
@@ -56,6 +159,10 @@ export default function TaskForm() {
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
+    let imageUrls: string[] = [];
+    if (selectedImages.length > 0) {
+      imageUrls = await uploadImages();
+    }
     e.preventDefault();
     if (!assigneeId) {
       alert("담당자를 선택해주세요.");
@@ -75,6 +182,7 @@ export default function TaskForm() {
         priority,
         dueDate: dueDate || undefined,
         participantIds,
+        referenceImageUrls: imageUrls,
       });
       alert("업무가 생성되었습니다!");
       // 폼 초기화
@@ -522,6 +630,82 @@ export default function TaskForm() {
                   rows={5}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all resize-none"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  레퍼런스 이미지 (선택사항)
+                </label>
+
+                {/* 파일 선택 input */}
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageSelect}
+                  disabled={uploadingImages || selectedImages.length >= 5}
+                  className="hidden"
+                  id="image-upload"
+                />
+
+                <label
+                  htmlFor="image-upload"
+                  className={`w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all ${
+                    uploadingImages || selectedImages.length >= 5
+                      ? "opacity-50 cursor-not-allowed"
+                      : "hover:border-[#7F55B1] hover:bg-violet-50"
+                  }`}
+                >
+                  <span className="text-2xl">📷</span>
+                  <span className="text-gray-600 text-sm">
+                    {selectedImages.length >= 5
+                      ? "최대 5개까지 업로드 가능합니다"
+                      : "이미지를 선택하거나 드래그하세요 (최대 5개)"}
+                  </span>
+                </label>
+
+                {/* 업로드 진행률 */}
+                {uploadingImages && (
+                  <div className="mt-2">
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-[#7F55B1] h-2 rounded-full transition-all"
+                        style={{ width: `${uploadProgress}%` }}
+                      ></div>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      업로드 중... {Math.round(uploadProgress)}%
+                    </p>
+                  </div>
+                )}
+
+                {/* 이미지 미리보기 */}
+                {imagePreviews.length > 0 && (
+                  <div className="mt-4 grid grid-cols-3 gap-4">
+                    {imagePreviews.map((preview, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={preview}
+                          alt={`미리보기 ${index + 1}`}
+                          className="w-full h-32 object-cover rounded-lg border border-gray-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleImageRemove(index)}
+                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 업로드된 이미지 개수 표시 */}
+                {uploadedImageUrls.length > 0 && (
+                  <p className="text-xs text-green-600 mt-2">
+                    ✓ {uploadedImageUrls.length}개의 이미지가 업로드되었습니다.
+                  </p>
+                )}
               </div>
 
               {/* 제출 버튼 */}
