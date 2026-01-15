@@ -6,31 +6,7 @@ import { useAuthStore } from "@/app/stores/authStore";
 import { getTask } from "@/lib/api/tasks";
 import { useEffect, useState } from "react";
 import { Task } from "@/lib/api/tasks";
-
-// 임시 타입 정의 (나중에 실제 데이터로 교체)
-// interface TaskData {
-//   id: string;
-//   title: string;
-//   description: string;
-//   status: "PENDING" | "IN_PROGRESS" | "REVIEW" | "COMPLETED";
-//   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-//   progress: number;
-//   dueDate: string;
-//   assignee: {
-//     name: string;
-//     email: string;
-//   };
-//   assigner: {
-//     name: string;
-//     email: string;
-//   };
-//   participants: {
-//     id: string;
-//     name: string;
-//   }[];
-//   createdAt: string;
-//   referenceImageUrls?: string[];
-// }
+import { updateTaskStatus } from "@/lib/api/tasks";
 
 interface TaskDetailProps {
   taskId: string;
@@ -47,6 +23,7 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
   const user = useAuthStore((state) => state.user);
   const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
   const [taskStatus, setTaskStatus] = useState("OFF");
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const formatDate = (dateString: string | null | undefined): string => {
     if (!dateString) return "";
     return new Date(dateString).toISOString().slice(0, 10);
@@ -86,6 +63,129 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
       setTaskStatus("ON");
     } else {
       setTaskStatus("완료");
+    }
+  };
+
+  // OFF/ON 토글 핸들러
+  const handleToggleStatus = async () => {
+    if (!task) return;
+
+    try {
+      setIsUpdatingStatus(true);
+
+      let newStatus: string;
+
+      // 현재 상태에 따라 다음 상태 결정
+      if (task.status === "PENDING") {
+        // OFF → ON: PENDING → NOW
+        newStatus = "NOW";
+      } else if (task.status === "NOW") {
+        // ON → COMPLETED: NOW → COMPLETED
+        newStatus = "REVIEW";
+      } else {
+        // 이미 완료된 상태
+        return;
+      }
+
+      // API 호출
+      const updatedTask = await updateTaskStatus(task.id, newStatus);
+      setTask(updatedTask);
+    } catch (error) {
+      console.error("상태 변경 실패:", error);
+      alert("상태 변경에 실패했습니다.");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  // 리뷰 승인 핸들러 (ENDING으로 변경)
+  const handleReviewApprove = async () => {
+    if (!task) return;
+
+    // 권한 확인
+    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "")) {
+      alert("리뷰 권한이 없습니다.");
+      return;
+    }
+
+    try {
+      setIsUpdatingStatus(true);
+      const updatedTask = await updateTaskStatus(task.id, "ENDING");
+      setTask(updatedTask);
+      alert("리뷰를 승인했습니다, 업무를 종료처리 할까요?");
+    } catch (error) {
+      console.error("리뷰 승인 실패:", error);
+      alert("리뷰 승인에 실패했습니다.");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  // 리뷰 반려 핸들러 (NOW로 변경 - 재작업)
+  const handleReviewReject = async () => {
+    if (!task) return;
+
+    // 권한 확인
+    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "")) {
+      alert("리뷰 권한이 없습니다.");
+      return;
+    }
+
+    const comment = prompt("반려 사유를 입력해주세요:");
+    if (!comment) return;
+
+    try {
+      setIsUpdatingStatus(true);
+      const updatedTask = await updateTaskStatus(task.id, "NOW", comment);
+      setTask(updatedTask);
+      alert("리뷰가 반려되어 재작업 상태로 변경되었습니다.");
+    } catch (error) {
+      console.error("리뷰 반려 실패:", error);
+      alert("리뷰 반려에 실패했습니다.");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  // 취소 핸들러
+  const handleCancel = async () => {
+    if (!task) return;
+
+    if (!confirm("정말 업무를 취소하시겠습니까?")) {
+      return;
+    }
+
+    try {
+      setIsUpdatingStatus(true);
+      const updatedTask = await updateTaskStatus(task.id, "CANCELLED");
+      setTask(updatedTask);
+      alert("업무가 취소되었습니다.");
+    } catch (error) {
+      console.error("취소 실패:", error);
+      alert("업무 취소에 실패했습니다.");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  // 종료 핸들러
+  const handleEnd = async () => {
+    if (!task) return;
+
+    if (!confirm("업무를 최종 종료하시겠습니까?")) {
+      return;
+    }
+
+    try {
+      setIsUpdatingStatus(true);
+      const updatedTask = await updateTaskStatus(task.id, "ENDING");
+      setTask(updatedTask);
+      alert("업무가 종료되었습니다.");
+    } catch (error) {
+      console.error("종료 실패:", error);
+      alert("업무 종료에 실패했습니다.");
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
@@ -152,11 +252,87 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
             참여자
           </button>
         </div>
+        {/* 상태 변경 버튼 영역 */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* 1. OFF/ON 토글 버튼 (담당자만, PENDING/NOW 상태일 때) */}
+          {task?.assigneeId === user?.id &&
+            (task?.status === "PENDING" || task?.status === "NOW") && (
+              <button
+                onClick={handleToggleStatus}
+                disabled={isUpdatingStatus}
+                className={`px-6 py-2 rounded-full font-medium transition-all ${
+                  task.status === "PENDING"
+                    ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    : "bg-[#7F55B1] text-white hover:bg-[#6B479A]"
+                } disabled:opacity-50`}
+              >
+                {task.status === "PENDING" ? "OFF" : "ON"}
+              </button>
+            )}
 
-        {/* 드롭다운 (상태 변경용) */}
-        <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-full text-sm text-gray-600 hover:border-[#7F55B1] transition-all">
-          {taskStatus}
-        </button>
+          {/* 2. 리뷰 버튼 영역 (팀장 이상, COMPLETED 상태일 때) */}
+          {["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "") &&
+            task?.status === "COMPLETED" && (
+              <div className="flex gap-2">
+                <button
+                  onClick={handleReviewApprove}
+                  disabled={isUpdatingStatus}
+                  className="px-6 py-2 bg-green-500 text-white rounded-full font-medium hover:bg-green-600 transition-all disabled:opacity-50"
+                >
+                  리뷰 승인
+                </button>
+                <button
+                  onClick={handleReviewReject}
+                  disabled={isUpdatingStatus}
+                  className="px-6 py-2 bg-orange-500 text-white rounded-full font-medium hover:bg-orange-600 transition-all disabled:opacity-50"
+                >
+                  리뷰 반려
+                </button>
+              </div>
+            )}
+
+          {/* 3. REVIEW 상태 표시 (검토 중) */}
+          {task?.status === "REVIEW" && (
+            <div className="px-4 py-2 bg-yellow-100 text-yellow-800 rounded-full font-medium">
+              검토 중...
+            </div>
+          )}
+
+          {/* 4. 취소 버튼 (CANCELLED, ENDING 상태가 아닐 때) */}
+          {task?.status !== "CANCELLED" && task?.status !== "ENDING" && (
+            <button
+              onClick={handleCancel}
+              disabled={isUpdatingStatus}
+              className="px-6 py-2 bg-red-500 text-white rounded-full font-medium hover:bg-red-600 transition-all disabled:opacity-50"
+            >
+              취소
+            </button>
+          )}
+
+          {/* 5. 종료 버튼 (COMPLETED 상태일 때, 팀장 이상만) */}
+          {task?.status === "COMPLETED" &&
+            ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "") && (
+              <button
+                onClick={handleEnd}
+                disabled={isUpdatingStatus}
+                className="px-6 py-2 bg-gray-700 text-white rounded-full font-medium hover:bg-gray-800 transition-all disabled:opacity-50"
+              >
+                종료
+              </button>
+            )}
+
+          {/* 6. 최종 상태 표시 (CANCELLED, ENDING) */}
+          {task?.status === "CANCELLED" && (
+            <div className="px-4 py-2 bg-red-100 text-red-800 rounded-full font-medium">
+              취소됨
+            </div>
+          )}
+          {task?.status === "ENDING" && (
+            <div className="px-4 py-2 bg-gray-700 text-white rounded-full font-medium">
+              종료됨
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 진행률 표시 영역 */}
@@ -229,10 +405,6 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
               </p>
               <p className="text-gray-400 text-xs">{task?.assignee?.email}</p>
             </div>
-          </div>
-          <div className="border-t border-gray-200 pt-3">
-            <p className="text-gray-400 text-xs mb-1">업무 지시자</p>
-            <p className="text-gray-600 text-sm">{task?.assigner?.name}</p>
           </div>
         </div>
 

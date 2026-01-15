@@ -30,7 +30,6 @@ const uploadToS3 = async (file, folder = "tasks", taskId = null) => {
       Key: s3Key,
       Body: file.buffer, // multer가 메모리에 저장한 파일 버퍼
       ContentType: file.mimetype, // 이미지 타입 (image/jpeg, image/png 등)
-      ACL: "public-read", // 퍼블릭 읽기 권한 (또는 버킷 정책으로 관리)
     });
 
     // 5. S3에 업로드 실행

@@ -21,6 +21,8 @@ model User {
   assignedTasks  Task[] @relation("Assignee")
   assignedTasks2 Task[] @relation("Assigner")
   participatingTasks TaskParticipant[]
+  requestedCalendarEvents CalendarEvent[] @relation("CalendarEventRequester")
+  approvedCalendarEvents  CalendarEvent[] @relation("CalendarEventApprover")
 }
 
 model Team {
@@ -31,6 +33,7 @@ model Team {
 
   members User[] @relation("TeamMembers")
   tasks   Task[]
+  calendarEvents CalendarEvent[]
 }
 
 model Task {
@@ -109,4 +112,40 @@ enum Priority {
   MEDIUM
   HIGH
   URGENT
+}
+
+enum CalendarEventType {
+  MEETING_ROOM    
+  MEETING         
+  LEAVE          
+  VACATION        
+}
+
+enum CalendarEventStatus {
+  PENDING      
+  APPROVED       
+  REJECTED      
+}
+
+model CalendarEvent {
+  id          String              @id @default(uuid())
+  type        CalendarEventType
+  title       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  location    String?             // 회의실/미팅 장소
+  status      CalendarEventStatus  @default(APPROVED) // 회의실/미팅은 기본 APPROVED
+  requestedBy String              // 요청자 ID
+  approvedBy  String?             // 승인자 ID (연차/휴가만)
+  teamId      String              // 팀 ID
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  requester   User   @relation("CalendarEventRequester", fields: [requestedBy], references: [id])
+  approver     User?  @relation("CalendarEventApprover", fields: [approvedBy], references: [id])
+  team         Team   @relation(fields: [teamId], references: [teamName])
+
+  @@index([startDate, endDate])
+  @@index([teamId])
 }
