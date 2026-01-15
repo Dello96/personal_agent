@@ -35,6 +35,15 @@ const CalendarEventModal = ({
   const [location, setLocation] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [formData, setFormData] = useState<{
+    type: "MEETING_ROOM" | "MEETING" | "LEAVE" | "VACATION";
+    title: string;
+    description: string;
+    startDate: string;
+    endDate: string;
+    location: string;
+  } | null>(null);
 
   // 선택된 날짜가 변경되면 폼 초기화
   useEffect(() => {
@@ -75,19 +84,16 @@ const CalendarEventModal = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setIsSubmitting(true);
 
     try {
       // 필수 필드 검증
       if (!title.trim()) {
         setError("제목을 입력해주세요.");
-        setIsSubmitting(false);
         return;
       }
 
       if (!startDate || !endDate) {
         setError("시작일과 종료일을 선택해주세요.");
-        setIsSubmitting(false);
         return;
       }
 
@@ -97,7 +103,6 @@ const CalendarEventModal = ({
         !location.trim()
       ) {
         setError("장소를 입력해주세요.");
-        setIsSubmitting(false);
         return;
       }
 
@@ -110,18 +115,39 @@ const CalendarEventModal = ({
       const end = new Date(endDateTime);
       if (start >= end) {
         setError("종료일시는 시작일시보다 이후여야 합니다.");
-        setIsSubmitting(false);
         return;
       }
 
-      // API 호출
-      await createCalendarEvent({
+      // 폼 데이터 저장 후 확인 모달 표시
+      setFormData({
         type: eventType,
         title: title.trim(),
-        description: description.trim() || undefined,
+        description: description.trim(),
         startDate: start.toISOString(),
         endDate: end.toISOString(),
-        location: location.trim() || undefined,
+        location: location.trim(),
+      });
+      setShowConfirmModal(true);
+    } catch (err: any) {
+      setError(err.message || "입력 정보를 확인해주세요.");
+    }
+  };
+
+  const handleConfirmSubmit = async () => {
+    if (!formData) return;
+
+    setIsSubmitting(true);
+    setShowConfirmModal(false);
+
+    try {
+      // API 호출
+      await createCalendarEvent({
+        type: formData.type,
+        title: formData.title,
+        description: formData.description || undefined,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        location: formData.location || undefined,
       });
 
       // 성공 시 콜백 호출 및 모달 닫기
@@ -131,7 +157,6 @@ const CalendarEventModal = ({
       onClose();
     } catch (err: any) {
       setError(err.message || "일정 생성에 실패했습니다.");
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -324,6 +349,36 @@ const CalendarEventModal = ({
           </div>
         </form>
       </div>
+
+      {/* 확인 모달 */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">
+              일정 등록 확인
+            </h3>
+            <p className="text-gray-600 mb-6">
+              일정을 등록하시겠습니까?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSubmit}
+                className="px-6 py-2 bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] transition-colors"
+              >
+                등록
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

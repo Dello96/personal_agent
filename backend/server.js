@@ -52,6 +52,9 @@ app.use("/api/upload", uploadRoutes);
 const calendarRoutes = require("./routes/calendar");
 app.use("/api/calendar", calendarRoutes);
 
+const chatRoutes = require("./routes/chat");
+app.use("/api/chat", chatRoutes);
+
 // Prisma 클라이언트 import
 const prisma = require("./db/prisma");
 
