@@ -1,5 +1,14 @@
 const dotenv = require("dotenv");
+
+// 상대 경로 먼저 시도 (로컬 환경)
 dotenv.config({ path: "../.env.local" });
+
+// 환경 변수가 없으면 절대 경로 시도 (EC2 환경)
+if (!process.env.BACKEND_URL) {
+  dotenv.config({ path: "/home/ubuntu/personal_agent/.env.local" });
+}
+
+console.log("✅ BACKEND_URL:", process.env.BACKEND_URL || "not set");
 const jwt = require("jsonwebtoken");
 const express = require("express");
 const axios = require("axios");
@@ -11,7 +20,10 @@ const googleClientId =
 const googlePassWord = process.env.GOOGLE_CLIENT_SECRET;
 const kakaoClientId = process.env.KAKAO_CLIENT_ID;
 const kakaoSecret = process.env.KAKAO_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI = "http://localhost:8080/login/redirect";
+
+// 백엔드 URL (환경 변수에서 가져오거나 기본값 사용)
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8080";
+const GOOGLE_REDIRECT_URI = `${BACKEND_URL}/login/redirect`;
 
 app.get("/", function (req, res) {
   res.send(`
@@ -27,10 +39,18 @@ app.use(express.json());
 const tasksRoutes = require("./routes/tasks");
 const teamRoutes = require("./routes/team");
 const usersRoutes = require("./routes/users");
+const authRoutes = require("./routes/auth");
 
 app.use("/api/tasks", tasksRoutes);
 app.use("/api/team", teamRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/auth", authRoutes);
+
+const uploadRoutes = require("./routes/upload");
+app.use("/api/upload", uploadRoutes);
+
+const calendarRoutes = require("./routes/calendar");
+app.use("/api/calendar", calendarRoutes);
 
 // Prisma 클라이언트 import
 const prisma = require("./db/prisma");
@@ -45,7 +65,7 @@ app.get("/login", (req, res) => {
 });
 
 app.get("/auth/kakao", (req, res) => {
-  const KAKAO_REDIRECT_URI = "http://localhost:8080/auth/kakao/callback";
+  const KAKAO_REDIRECT_URI = `${BACKEND_URL}/auth/kakao/callback`;
 
   let url = "https://kauth.kakao.com/oauth/authorize";
   url += `?client_id=${kakaoClientId}`;

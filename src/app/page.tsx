@@ -5,8 +5,12 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
 import { getTasks, Task } from "@/lib/api/tasks";
 import { getTeamMembers, TeamMember } from "@/lib/api/users";
+import Image from "next/image";
+import AppLayout from "@/app/components/shared/AppLayout";
+import { getRoleLabel } from "@/lib/utils/roleUtils";
 
 function HomeContent() {
+  const leftMenus = ["진행중인 업무", "일정", "채팅"];
   const searchParams = useSearchParams();
   const router = useRouter();
   const loginStatus = searchParams.get("login");
@@ -19,6 +23,23 @@ function HomeContent() {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const hasHydrated = useAuthStore((state) => state._hasHydrated);
+  const formatRelativeTime = (
+    dateString: string | null | undefined
+  ): string => {
+    if (!dateString) return "";
+
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+    if (diffDays > 0) return `${diffDays}일 전`;
+    if (diffHours > 0) return `${diffHours}시간 전`;
+    if (diffMinutes > 0) return `${diffMinutes}분 전`;
+    return "방금 전";
+  };
 
   // 팀원 목록 상태
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -28,9 +49,9 @@ function HomeContent() {
   const [activeMenu, setActiveMenu] = useState("진행중인 업무");
 
   // 업무 상태 탭
-  const [activeTab, setActiveTab] = useState<"IN_PROGRESS" | "COMPLETED">(
-    "IN_PROGRESS"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "PENDING" | "NOW" | "REVIEW" | "COMPLETED"
+  >("NOW");
 
   const goToTeamJoin = () => {
     router.push("/team/join");
@@ -54,16 +75,6 @@ function HomeContent() {
     if (isParticipant) return "참여자";
 
     return null;
-  };
-
-  const getRoleLabel = (role: string) => {
-    const roleMap: Record<string, string> = {
-      MEMBER: "팀원",
-      TEAM_LEAD: "팀장",
-      MANAGER: "매니저",
-      DIRECTOR: "임원",
-    };
-    return roleMap[role] || role;
   };
 
   const getPriorityLabel = (priority: string) => {
@@ -181,8 +192,14 @@ function HomeContent() {
     }
   }, [loginStatus, router, login]);
 
-  const loginAction = () => {
-    router.push("/auth/login");
+  const handleLeftMenu = (menu: string) => {
+    setActiveMenu(menu);
+    if (menu === "일정") {
+      router.push("/calendar");
+    }
+    if (menu === "진행중인 업무") {
+      router.push("/");
+    }
   };
 
   const workAssignment = () => {
@@ -198,12 +215,19 @@ function HomeContent() {
   });
 
   // 탭별 업무 필터링
-  const inProgressTasks = tasks.filter(
-    (t) => t.status === "IN_PROGRESS" || t.status === "PENDING"
-  );
-  const completedTasks = tasks.filter((t) => t.status === "COMPLETED");
+  const pendingTasks = tasks.filter((t) => t.status === "PENDING"); // 진행전
+  const nowTasks = tasks.filter((t) => t.status === "NOW"); // 진행중
+  const completedTasks = tasks.filter((t) => t.status === "COMPLETED"); // 완료
+  const reviewTasks = tasks.filter((t) => t.status === "REVIEW"); //리뷰
+  const endingTasks = tasks.filter((t) => t.status === "ENDING"); //종료
   const displayTasks =
-    activeTab === "IN_PROGRESS" ? inProgressTasks : completedTasks;
+    activeTab === "NOW"
+      ? nowTasks
+      : activeTab === "PENDING"
+        ? pendingTasks
+        : activeTab === "REVIEW"
+          ? reviewTasks
+          : completedTasks;
 
   // 로그인 안 된 경우
   if (!hasHydrated) {
@@ -227,12 +251,62 @@ function HomeContent() {
           <p className="text-gray-500 mb-8">
             로그인하시면 오늘의 업무를 확인할 수 있습니다.
           </p>
+
+          {/* 일반 로그인 버튼 */}
           <button
-            onClick={loginAction}
-            className="w-full py-3 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white rounded-xl font-medium hover:from-[#6B479A] hover:to-purple-500 transition-all shadow-lg hover:shadow-xl"
+            onClick={() => router.push("/auth/login")}
+            className="w-full py-3 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white rounded-xl font-medium hover:from-[#6B479A] hover:to-purple-500 transition-all shadow-lg hover:shadow-xl mb-3"
           >
             로그인하기
           </button>
+
+          {/* 회원가입 버튼 */}
+          <button
+            onClick={() => router.push("/auth/register")}
+            className="w-full py-3 bg-white border-2 border-[#7F55B1] text-[#7F55B1] rounded-xl font-medium hover:bg-violet-50 transition-all mb-6"
+          >
+            회원가입
+          </button>
+
+          {/* 구분선 */}
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-4 bg-white text-gray-500">또는</span>
+            </div>
+          </div>
+
+          {/* 소셜 로그인 버튼 */}
+          <div className="space-y-3">
+            <button
+              onClick={() =>
+                (window.location.href = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}/login`)
+              }
+              className="w-full py-3 bg-white border border-gray-200 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
+            >
+              <Image
+                src="/images/web_light_sq_ctn@1x.png"
+                alt="google 로그인"
+                width={183}
+                height={45}
+              />
+            </button>
+            <button
+              onClick={() =>
+                (window.location.href = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}/auth/kakao`)
+              }
+              className="w-full py-3 bg-[#FEE500] text-[#3C1E1E] rounded-xl font-medium hover:bg-[#F5DC00] transition-all flex items-center justify-center gap-2"
+            >
+              <Image
+                src="/images/kakao_login_medium_narrow.png"
+                alt="kakao 로그인"
+                width={183}
+                height={45}
+              />
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -267,6 +341,12 @@ function HomeContent() {
           >
             팀 생성하기
           </button>
+          <button
+            onClick={handleLogout}
+            className="w-full py-3 bg-white border-2 border-[#7F55B1] text-[#FF4646] rounded-xl font-medium hover:bg-violet-50 transition-all"
+          >
+            로그아웃
+          </button>
         </div>
       </div>
     );
@@ -274,346 +354,313 @@ function HomeContent() {
 
   // 로그인 + 팀 가입된 경우 - 메인 대시보드
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex">
-      {/* 좌측 사이드바 */}
-      <aside className="w-64 bg-gradient-to-b from-[#7F55B1] to-[#9B6BC3] rounded-3xl m-4 p-6 flex flex-col shadow-xl">
-        {/* 로고 영역 */}
-        <div className="mb-10">
-          <h1 className="text-white text-2xl font-bold italic flex items-center gap-2">
-            <span className="text-3xl">📋</span>
-            TaskFlow
-          </h1>
-        </div>
-
-        {/* 메뉴 리스트 */}
-        <nav className="flex-1 space-y-2">
-          {["진행중인 업무", "완료된 업무", "요청사항"].map((menu) => (
-            <button
-              key={menu}
-              onClick={() => setActiveMenu(menu)}
-              className={`w-full text-left px-4 py-3 rounded-xl transition-all flex items-center gap-3 ${
-                activeMenu === menu
-                  ? "bg-white text-[#7F55B1] shadow-lg font-semibold"
-                  : "text-white/90 hover:bg-white/20"
-              }`}
-            >
-              <span>
-                {menu === "진행중인 업무" && "🔄"}
-                {menu === "완료된 업무" && "✅"}
-                {menu === "요청사항" && "📝"}
-              </span>
-              {menu}
-            </button>
-          ))}
-        </nav>
-
-        {/* 하단 로그아웃 버튼 */}
-        <button
-          onClick={handleLogout}
-          className="mt-auto w-full py-3 bg-white/20 text-white rounded-xl hover:bg-white/30 transition-all flex items-center justify-center gap-2"
-        >
-          <span>🚪</span>
-          Go Out
-        </button>
-      </aside>
-
-      {/* 메인 컨텐츠 영역 */}
-      <main className="flex-1 p-4 overflow-auto">
-        {/* 상단바 */}
-        <header className="bg-white rounded-2xl px-6 py-4 mb-4 shadow-sm flex items-center justify-between">
-          {/* 좌측: Home 버튼 */}
-          <button
-            onClick={() => router.push("/")}
-            className="flex items-center gap-2 text-gray-600 hover:text-[#7F55B1] transition-colors"
-          >
-            <span className="text-xl">🏠</span>
-            <span className="font-medium">Home</span>
-          </button>
-
-          {/* 우측: 직급, 마이페이지, 로그아웃 */}
-          <div className="flex items-center gap-4">
-            {/* 직급 표시 */}
-            <span className="px-4 py-2 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white rounded-full text-sm font-medium">
-              {getRoleLabel(user.role)}
-            </span>
-
-            {/* 마이페이지 */}
-            <button
-              onClick={() => router.push("/mypage")}
-              className="flex items-center gap-2 text-gray-600 hover:text-[#7F55B1] transition-colors"
-            >
-              <span className="text-xl">👤</span>
-              <span className="font-medium">Mypage</span>
-            </button>
-
-            {/* 로그아웃 */}
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 bg-red-100 text-red-500 rounded-xl hover:bg-red-200 transition-colors"
-            >
-              <span>🚪</span>
-              <span className="font-medium">Logout</span>
-            </button>
-          </div>
-        </header>
-
-        {/* 컨텐츠 그리드 */}
-        <div className="grid grid-cols-3 gap-4">
-          {/* 좌측 컬럼 (2/3) */}
-          <div className="col-span-2 space-y-4">
-            {/* Today's Tasks 요약 카드 */}
-            <div className="bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-3xl p-6 text-white shadow-xl">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h2 className="text-purple-200 text-sm mb-1">
-                    Today&apos;s Tasks
-                  </h2>
-                  <div className="flex items-end gap-2">
-                    <span className="text-5xl font-bold">{tasks.length}</span>
-                    <span className="text-xl mb-1">건</span>
-                  </div>
+    <AppLayout
+      activeMenu={activeMenu}
+      onMenuClick={handleLeftMenu}
+      sidebarVariant="default"
+    >
+      {/* 컨텐츠 그리드 */}
+      <div className="grid grid-cols-3 gap-4">
+        {/* 좌측 컬럼 (2/3) */}
+        <div className="col-span-2 space-y-4">
+          {/* Today's Tasks 요약 카드 */}
+          <div className="bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-3xl p-6 text-white shadow-xl">
+            <div className="flex justify-between items-start">
+              <div>
+                <h2 className="text-purple-200 text-sm mb-1">
+                  Today&apos;s Tasks
+                </h2>
+                <div className="flex items-end gap-2">
+                  <span className="text-5xl font-bold">{`${pendingTasks.length + nowTasks.length}`}</span>
+                  <span className="text-xl mb-1">건</span>
                 </div>
-
-                {/* 업무 전달 버튼 (팀장 이상만) */}
-                {user.role !== "MEMBER" && (
-                  <button
-                    onClick={workAssignment}
-                    className="px-4 py-2 bg-white text-[#7F55B1] rounded-xl font-medium hover:bg-purple-50 transition-colors text-sm"
-                  >
-                    + 업무 전달하기
-                  </button>
-                )}
               </div>
+
+              {/* 업무 전달 버튼 (팀장 이상만) */}
+              {user.role !== "MEMBER" && (
+                <button
+                  onClick={workAssignment}
+                  className="px-4 py-2 bg-white text-[#7F55B1] rounded-xl font-medium hover:bg-purple-50 transition-colors text-sm"
+                >
+                  + 업무 만들기
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 진행중/완료 탭 섹션 */}
+          <div className="bg-white rounded-3xl shadow-sm overflow-hidden">
+            {/* 탭 헤더 */}
+            <div className="flex border-b border-gray-100">
+              {/* 1. 진행전 탭 */}
+              <button
+                onClick={() => setActiveTab("PENDING")}
+                className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
+                  activeTab === "PENDING"
+                    ? "text-[#7F55B1] border-b-2 border-[#7F55B1] bg-purple-50"
+                    : "text-gray-400 hover:text-gray-600"
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span>📋</span>
+                  <span>진행전</span>
+                  <span className="px-2 py-0.5 bg-gray-500 text-white text-xs rounded-full">
+                    {pendingTasks.length}
+                  </span>
+                </div>
+              </button>
+
+              {/* 2. 진행중 탭 */}
+              <button
+                onClick={() => setActiveTab("NOW")}
+                className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
+                  activeTab === "NOW"
+                    ? "text-[#7F55B1] border-b-2 border-[#7F55B1] bg-purple-50"
+                    : "text-gray-400 hover:text-gray-600"
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span>🔄</span>
+                  <span>진행중</span>
+                  <span className="px-2 py-0.5 bg-[#7F55B1] text-white text-xs rounded-full">
+                    {nowTasks.length}
+                  </span>
+                </div>
+              </button>
+
+              {/* 리뷰중 탭 */}
+              <button
+                onClick={() => setActiveTab("REVIEW")}
+                className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
+                  activeTab === "REVIEW"
+                    ? "text-[#7F55B1] border-b-2 border-[#7F55B1] bg-purple-50"
+                    : "text-gray-400 hover:text-gray-600"
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span>📝</span>
+                  <span>리뷰중</span>
+                  <span className="px-2 py-0.5 bg-gray-500 text-white text-xs rounded-full">
+                    {reviewTasks.length}
+                  </span>
+                </div>
+              </button>
+
+              {/* 3. 완료 탭 */}
+              <button
+                onClick={() => setActiveTab("COMPLETED")}
+                className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
+                  activeTab === "COMPLETED"
+                    ? "text-[#7F55B1] border-b-2 border-[#7F55B1] bg-purple-50"
+                    : "text-gray-400 hover:text-gray-600"
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span>✅</span>
+                  <span>종료</span>
+                  <span className="px-2 py-0.5 bg-green-500 text-white text-xs rounded-full">
+                    {endingTasks.length}
+                  </span>
+                </div>
+              </button>
             </div>
 
-            {/* 진행중/완료 탭 섹션 */}
-            <div className="bg-white rounded-3xl shadow-sm overflow-hidden">
-              {/* 탭 헤더 */}
-              <div className="flex border-b border-gray-100">
-                <button
-                  onClick={() => setActiveTab("IN_PROGRESS")}
-                  className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
-                    activeTab === "IN_PROGRESS"
-                      ? "text-[#7F55B1] border-b-2 border-[#7F55B1] bg-purple-50"
-                      : "text-gray-400 hover:text-gray-600"
-                  }`}
-                >
-                  <div className="flex items-center justify-center gap-2">
-                    <span>🔄</span>
-                    <span>진행중</span>
-                    <span className="px-2 py-0.5 bg-[#7F55B1] text-white text-xs rounded-full">
-                      {inProgressTasks.length}
-                    </span>
-                  </div>
-                </button>
-                <button
-                  onClick={() => setActiveTab("COMPLETED")}
-                  className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
-                    activeTab === "COMPLETED"
-                      ? "text-[#7F55B1] border-b-2 border-[#7F55B1] bg-purple-50"
-                      : "text-gray-400 hover:text-gray-600"
-                  }`}
-                >
-                  <div className="flex items-center justify-center gap-2">
-                    <span>✅</span>
-                    <span>완료</span>
-                    <span className="px-2 py-0.5 bg-green-500 text-white text-xs rounded-full">
-                      {completedTasks.length}
-                    </span>
-                  </div>
-                </button>
-              </div>
-
-              {/* 업무 목록 */}
-              <div className="p-6 min-h-[400px] max-h-[500px] overflow-auto">
-                {tasksLoading ? (
-                  <div className="flex items-center justify-center h-40">
-                    <div className="text-gray-400">로딩 중...</div>
-                  </div>
-                ) : displayTasks.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-40 text-gray-400">
-                    <span className="text-4xl mb-2">
-                      {activeTab === "IN_PROGRESS" ? "📭" : "🎉"}
-                    </span>
-                    <p>
-                      {activeTab === "IN_PROGRESS"
-                        ? "진행중인 업무가 없습니다."
-                        : "완료된 업무가 없습니다."}
-                    </p>
-                  </div>
-                ) : (
-                  <ul className="space-y-3">
-                    {displayTasks.map((task) => {
-                      const myRole = getMyRoleInTask(task);
-                      return (
-                        <li
-                          onClick={() => router.push(`/tasksDetail/${task.id}`)}
-                          key={task.id}
-                          className="p-4 bg-gray-50 rounded-2xl hover:bg-purple-50 transition-colors cursor-pointer border border-gray-100"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span
-                                  className={`w-2 h-2 rounded-full ${
-                                    getPriorityLabel(task.priority).color
-                                  }`}
-                                ></span>
-                                <h4 className="font-semibold text-gray-800">
-                                  {task.title}
-                                </h4>
-                              </div>
-                              {task.description && (
-                                <p className="text-gray-500 text-sm mb-2 line-clamp-2">
-                                  {task.description}
-                                </p>
-                              )}
-                              <div className="flex items-center gap-4 text-xs text-gray-400">
-                                {task.dueDate && (
-                                  <span className="flex items-center gap-1">
-                                    📅{" "}
-                                    {new Date(
-                                      task.dueDate
-                                    ).toLocaleDateString()}
-                                  </span>
-                                )}
-                                <span className="flex items-center gap-1">
-                                  🏷️ {getPriorityLabel(task.priority).label}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col items-end gap-2">
+            {/* 업무 목록 */}
+            <div className="p-6 min-h-[400px] max-h-[500px] overflow-auto">
+              {tasksLoading ? (
+                <div className="flex items-center justify-center h-40">
+                  <div className="text-gray-400">로딩 중...</div>
+                </div>
+              ) : displayTasks.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+                  <span className="text-4xl mb-2">
+                    {activeTab === "NOW" ? "📭" : "🎉"}
+                  </span>
+                  <p>
+                    {activeTab === "NOW"
+                      ? "진행중인 업무가 없습니다."
+                      : "완료된 업무가 없습니다."}
+                  </p>
+                </div>
+              ) : (
+                <ul className="space-y-3">
+                  {displayTasks.map((task) => {
+                    const myRole = getMyRoleInTask(task);
+                    return (
+                      <li
+                        onClick={() => router.push(`/tasksDetail/${task.id}`)}
+                        key={task.id}
+                        className="p-4 bg-gray-50 rounded-2xl hover:bg-purple-50 transition-colors cursor-pointer border border-gray-100"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
                               <span
-                                className={`px-3 py-1 rounded-full text-xs font-medium ${
-                                  activeTab === "IN_PROGRESS"
-                                    ? "bg-yellow-100 text-yellow-700"
-                                    : "bg-green-100 text-green-700"
+                                className={`w-2 h-2 rounded-full ${
+                                  getPriorityLabel(task.priority).color
                                 }`}
-                              >
-                                {activeTab === "IN_PROGRESS"
-                                  ? "진행중"
-                                  : "완료"}
+                              ></span>
+                              <h4 className="font-semibold text-gray-800">
+                                {task.title}
+                              </h4>
+                            </div>
+                            {task.description && (
+                              <p className="text-gray-500 text-sm mb-2 line-clamp-2">
+                                {task.description}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-4 text-xs text-gray-400">
+                              {task.dueDate && (
+                                <span className="flex items-center gap-1">
+                                  📅{" "}
+                                  {new Date(task.dueDate).toLocaleDateString()}
+                                </span>
+                              )}
+                              <span className="flex items-center gap-1">
+                                🏷️ {getPriorityLabel(task.priority).label}
                               </span>
                             </div>
                           </div>
-                          {myRole && (
+                          <div className="flex flex-col items-end gap-2">
                             <span
-                              className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                myRole === "담당자"
-                                  ? "bg-purple-100 text-purple-700"
-                                  : "bg-blue-100 text-blue-700"
+                              className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                activeTab === "NOW"
+                                  ? "bg-yellow-100 text-yellow-700"
+                                  : "bg-green-100 text-green-700"
                               }`}
                             >
-                              {myRole}
+                              <span className="text-gray-500 text-xs">
+                                {formatRelativeTime(task.createdAt)}
+                              </span>
                             </span>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* 우측 컬럼 (1/3) */}
-          <div className="space-y-4">
-            {/* 내 정보 카드 */}
-            <div className="bg-white rounded-3xl p-6 shadow-sm">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-gray-800">내 정보</h3>
-                <span className="text-gray-400 text-sm">{user.teamName}</span>
-              </div>
-              <div className="flex flex-col items-center">
-                <div className="w-16 h-16 bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-full flex items-center justify-center mb-3">
-                  <span className="text-white text-2xl">
-                    {user.name?.charAt(0) || "U"}
-                  </span>
-                </div>
-                <p className="font-semibold text-gray-800">{user.name}</p>
-                <p className="text-gray-400 text-sm">{user.email}</p>
-              </div>
-            </div>
-            {/* 업무 통계 카드 */}
-            <div className="bg-white rounded-3xl p-6 shadow-sm">
-              <h3 className="font-semibold text-gray-800 mb-4">업무 현황</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <span>🔄</span>
-                    <span className="text-sm text-gray-600">진행중</span>
-                  </div>
-                  <span className="font-bold text-yellow-600">
-                    {inProgressTasks.length}건
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <span>✅</span>
-                    <span className="text-sm text-gray-600">완료</span>
-                  </div>
-                  <span className="font-bold text-green-600">
-                    {completedTasks.length}건
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <span>📝</span>
-                    <span className="text-sm text-gray-600">요청</span>
-                  </div>
-                  <span className="font-bold text-blue-600">
-                    {tasks.filter((t) => t.status === "PENDING").length}건
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* 팀원 목록 (Group) */}
-            <div className="bg-white rounded-3xl p-6 shadow-sm">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-gray-800">Group</h3>
-                <button className="text-gray-400 text-sm hover:text-[#7F55B1]">
-                  ⋮
-                </button>
-              </div>
-
-              {membersLoading ? (
-                <p className="text-gray-400 text-sm">로딩 중...</p>
-              ) : teamMembers.length === 0 ? (
-                <p className="text-gray-400 text-sm">팀원이 없습니다.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {teamMembers.slice(0, 5).map((member) => (
-                    <li
-                      key={member.id}
-                      className="flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center">
-                          <span className="text-gray-600 text-sm">
-                            {member.name?.charAt(0) || "?"}
+                          </div>
+                        </div>
+                        {myRole && (
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              myRole === "담당자"
+                                ? "bg-purple-100 text-purple-700"
+                                : "bg-blue-100 text-blue-700"
+                            }`}
+                          >
+                            {myRole}
                           </span>
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-800 text-sm">
-                            {member.name}
-                          </p>
-                          <p className="text-gray-400 text-xs">
-                            {getRoleLabel(member.role)}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="w-6 h-6 bg-[#7F55B1] text-white text-xs rounded-full flex items-center justify-center">
-                        1
-                      </span>
-                    </li>
-                  ))}
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
           </div>
         </div>
-      </main>
+
+        {/* 우측 컬럼 (1/3) */}
+        <div className="space-y-4">
+          {/* 내 정보 카드 */}
+          <div className="bg-white rounded-3xl p-6 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-semibold text-gray-800">내 정보</h3>
+              <span className="text-gray-400 text-sm">{user.teamName}</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-full flex items-center justify-center mb-3">
+                <span className="text-white text-2xl">
+                  {user.name?.charAt(0) || "U"}
+                </span>
+              </div>
+              <p className="font-semibold text-gray-800">{user.name}</p>
+              <p className="text-gray-400 text-sm">{user.email}</p>
+            </div>
+          </div>
+          {/* 업무 통계 카드 */}
+          <div className="bg-white rounded-3xl p-6 shadow-sm">
+            <h3 className="font-semibold text-gray-800 mb-4">업무 현황</h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-gray-100 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <span>📋</span>
+                  <span className="text-sm text-gray-600">진행전</span>
+                </div>
+                <span className="font-bold text-yellow-600">
+                  {pendingTasks.length}건
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <span>🔄</span>
+                  <span className="text-sm text-gray-600">진행중</span>
+                </div>
+                <span className="font-bold text-yellow-600">
+                  {nowTasks.length}건
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <span>📝</span>
+                  <span className="text-sm text-gray-600">검토</span>
+                </div>
+                <span className="font-bold text-blue-600">
+                  {reviewTasks.length}건
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <span>✅</span>
+                  <span className="text-sm text-gray-600">종료</span>
+                </div>
+                <span className="font-bold text-green-600">
+                  {endingTasks.length}건
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 팀원 목록 (Group) */}
+          <div className="bg-white rounded-3xl p-6 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-semibold text-gray-800">Group</h3>
+              <button className="text-gray-400 text-sm hover:text-[#7F55B1]">
+                ⋮
+              </button>
+            </div>
+
+            {membersLoading ? (
+              <p className="text-gray-400 text-sm">로딩 중...</p>
+            ) : teamMembers.length === 0 ? (
+              <p className="text-gray-400 text-sm">팀원이 없습니다.</p>
+            ) : (
+              <ul className="space-y-3">
+                {teamMembers.slice(0, 5).map((member) => (
+                  <li
+                    key={member.id}
+                    className="flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center">
+                        <span className="text-gray-600 text-sm">
+                          {member.name?.charAt(0) || "?"}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-800 text-sm">
+                          {member.name}
+                        </p>
+                        <p className="text-gray-400 text-xs">
+                          {getRoleLabel(member.role)}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="w-6 h-6 bg-[#7F55B1] text-white text-xs rounded-full flex items-center justify-center">
+                      1
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* 성공 메시지 */}
       {showSuccessMessage && (
@@ -621,7 +668,7 @@ function HomeContent() {
           로그인이 완료되었습니다!
         </div>
       )}
-    </div>
+    </AppLayout>
   );
 }
 

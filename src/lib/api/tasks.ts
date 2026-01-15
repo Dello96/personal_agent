@@ -17,8 +17,6 @@ export interface Task {
   id: string;
   title: string;
   description: string | null;
-  status: string;
-  priority: string;
   assigneeId: string;
   assignerId: string;
   teamName: string;
@@ -26,6 +24,16 @@ export interface Task {
   updatedAt: string;
   dueDate: string | null;
   completedAt: string | null;
+  status:
+    | "PENDING"
+    | "NOW"
+    | "IN_PROGRESS"
+    | "REVIEW"
+    | "COMPLETED"
+    | "CANCELLED"
+    | "ENDING";
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  progress: number;
   assignee?: {
     id: string;
     name: string;
@@ -41,6 +49,7 @@ export interface Task {
     name: string;
   };
   participants?: TaskParticipant[];
+  referenceImageUrls?: string[];
 }
 
 // 업무 생성
@@ -51,6 +60,7 @@ export const createTask = async (data: {
   priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   dueDate?: string;
   participantIds?: string[];
+  referenceImageUrls?: string[];
 }): Promise<Task> => {
   return apiRequest("/api/tasks", {
     method: "POST",
@@ -64,17 +74,18 @@ export const getTasks = async (): Promise<Task[]> => {
 };
 
 // 업무 상세 조회
-export const getTask = async (id: string) => {
+export const getTask = async (id: string | undefined) => {
   return apiRequest(`/api/tasks/${id}`);
 };
 
 // 업무 상태 변경
 export const updateTaskStatus = async (
   id: string,
-  status: string
+  status: string,
+  comment?: string //리뷰 반려시 코멘트 추가기능
 ): Promise<Task> => {
   return apiRequest(`/api/tasks/${id}/status`, {
     method: "PUT",
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, comment }),
   });
 };

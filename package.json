@@ -13,9 +13,11 @@
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
+    "dayjs": "^1.11.19",
     "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "uuid": "^13.0.0",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

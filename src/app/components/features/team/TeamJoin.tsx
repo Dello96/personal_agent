@@ -3,15 +3,13 @@
 import { useAuthStore } from "@/app/stores/authStore";
 import { useRouter } from "next/navigation";
 import { MouseEventHandler, useEffect, useState } from "react";
-import { joinTeam } from "@/lib/api/team";
+import { getTeams, joinTeam } from "@/lib/api/team";
 import { getCurrentUser } from "@/lib/api/users";
 
 export default function TeamJoin() {
   const router = useRouter();
-  const teams = ["개발팀", "기획팀", "디자인팀"];
-  //const [teams, setTeams] = useState([]); 하드코딩된 팀목록이 아닌 생성된 목록을 불러와 조회하도록 하는 코드세팅
   const [selectedTeam, setSelectedTeam] = useState("팀을 선택해주세요");
-  const [name, setName] = useState("");
+  const [teams, setTeams] = useState<string[]>([]);
   const [teamName, setTeamName] = useState("");
   const user = useAuthStore((state) => state.user); // authStore에서 사용자 정보 다시 가져오기
   const handleOnClick = (team: string) => {
@@ -73,19 +71,21 @@ export default function TeamJoin() {
     }
   };
 
-  // 하드코딩된 팀목록이 아닌 생성된 목록을 불러와 조회하도록 하는 코드
-  // useEffect(() => {
-  //   // 팀 목록 조회
-  //   const fetchTeams = async () => {
-  //     try {
-  //       const data = await getTeams(); // 팀 목록 API 호출
-  //       setTeams(data.teams);
-  //     } catch (error) {
-  //       console.error("팀 목록 조회 실패:", error);
-  //     }
-  //   };
-  //   fetchTeams();
-  // }, []);
+  // DB에서 팀 목록 불러오기
+  useEffect(() => {
+    const fetchTeams = async () => {
+      try {
+        const data = await getTeams();
+        // Team 객체 배열에서 teamName만 추출하여 문자열 배열로 변환
+        const teamNames = data.teams.map((team) => team.teamName);
+        setTeams(teamNames);
+      } catch (error) {
+        console.error("팀 목록 조회 실패:", error);
+        alert("팀 목록을 불러오는데 실패했습니다.");
+      }
+    };
+    fetchTeams();
+  }, []);
 
   return (
     <div className="flex flex-col items-center">
@@ -112,6 +112,13 @@ export default function TeamJoin() {
         <div className="w-[100px] border rounded-md border-indigo-600 text-center">
           <button type="submit">선택완료</button>
         </div>
+        <button
+          type="button"
+          onClick={() => router.push("/")}
+          className={"w-full p-4"}
+        >
+          홈으로 돌아가기
+        </button>
       </form>
     </div>
   );

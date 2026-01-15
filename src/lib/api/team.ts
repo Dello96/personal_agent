@@ -38,6 +38,12 @@ export const joinTeam = async (teamName: string): Promise<Team> => {
   return response;
 };
 
-// export const getTeams = async (): Promise<{ teams: Team[] }> => {
-//   return apiRequest("/api/team");
-// };
+export const getTeams = async (): Promise<{
+  teams: Team[];
+  currentTeamName: string | null;
+}> => {
+  const response = await apiRequest("/api/team/getTeam", {
+    method: "GET",
+  });
+  return response as { teams: Team[]; currentTeamName: string | null };
+};
