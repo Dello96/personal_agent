@@ -24,6 +24,7 @@ model User {
   requestedCalendarEvents CalendarEvent[]   @relation("CalendarEventRequester")
   approvedCalendarEvents  CalendarEvent[]   @relation("CalendarEventApprover")
   messages                Message[]         @relation("MessageSender")
+  chatRoomParticipants    ChatRoomParticipant[] @relation("ChatRoomParticipant")
 }
 
 model Team {
@@ -152,16 +153,38 @@ model CalendarEvent {
   @@index([teamId])
 }
 
-model ChatRoom {
-  id        String   @id @default(uuid())
-  teamId    String   @unique // 팀당 하나의 채팅방
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum ChatRoomType {
+  TEAM      // 팀 채팅
+  DIRECT    // 개인 채팅 (1:1)
+}
 
-  team     Team      @relation(fields: [teamId], references: [teamName])
-  messages Message[]
+model ChatRoom {
+  id        String        @id @default(uuid())
+  type      ChatRoomType  @default(TEAM)
+  teamId    String?       @unique // 팀 채팅일 때만 사용
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  team      Team?         @relation(fields: [teamId], references: [teamName])
+  messages  Message[]
+  participants ChatRoomParticipant[] // 개인 채팅방 참여자
 
   @@index([teamId])
+  @@index([type])
+}
+
+model ChatRoomParticipant {
+  id        String   @id @default(uuid())
+  chatRoomId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  user     User     @relation("ChatRoomParticipant", fields: [userId], references: [id])
+
+  @@unique([chatRoomId, userId])
+  @@index([userId])
+  @@index([chatRoomId])
 }
 
 model Message {

@@ -292,6 +292,14 @@ app.get("/auth/kakao/callback", async (req, res) => {
   }
 });
 
-app.listen(8080, () => {
+// HTTP 서버 생성 (WebSocket과 함께 사용)
+const server = require("http").createServer(app);
+
+// WebSocket 서버 설정
+const ChatWebSocketServer = require("./websocket/chatServer");
+const chatWSS = new ChatWebSocketServer(server);
+
+server.listen(8080, () => {
   console.log("server is running at 8080");
+  console.log("WebSocket server is ready at ws://localhost:8080/ws/chat");
 });

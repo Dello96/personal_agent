@@ -34,14 +34,25 @@ export const getChatRoom = async (): Promise<ChatRoom> => {
   return apiRequest("/api/chat/room");
 };
 
+// 개인 채팅방 조회 또는 생성
+export const getDirectChatRoom = async (userId: string): Promise<ChatRoom> => {
+  return apiRequest(`/api/chat/direct/${userId}`);
+};
+
 // 메시지 목록 조회
 export const getMessages = async (
   limit?: number,
-  cursor?: string
+  cursor?: string,
+  roomId?: string,
+  type: "TEAM" | "DIRECT" = "TEAM",
+  lastMessageId?: string
 ): Promise<MessagesResponse> => {
   const params = new URLSearchParams();
   if (limit) params.append("limit", limit.toString());
   if (cursor) params.append("cursor", cursor);
+  if (roomId) params.append("roomId", roomId);
+  if (lastMessageId) params.append("lastMessageId", lastMessageId);
+  params.append("type", type);
 
   const queryString = params.toString();
   return apiRequest(
@@ -50,10 +61,14 @@ export const getMessages = async (
 };
 
 // 메시지 전송
-export const sendMessage = async (content: string): Promise<Message> => {
+export const sendMessage = async (
+  content: string,
+  roomId?: string,
+  type: "TEAM" | "DIRECT" = "TEAM"
+): Promise<Message> => {
   return apiRequest("/api/chat/messages", {
     method: "POST",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, roomId, type }),
   });
 };
 

@@ -6,17 +6,20 @@ import AppLayout from "@/app/components/shared/AppLayout";
 import { useAuthStore } from "@/app/stores/authStore";
 import {
   getMessages,
-  sendMessage,
   Message,
   deleteMessage,
+  getDirectChatRoom,
+  getChatRoom,
 } from "@/lib/api/chat";
 import { formatRelativeTime } from "@/lib/utils/dateFormat";
 import Image from "next/image";
 import { getTeamMembers, TeamMember } from "@/lib/api/users";
+import { chatWebSocketClient } from "@/lib/websocket/chatClient";
 
 const ChatPage = () => {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
+  const token = useAuthStore((state) => state.token);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -25,9 +28,24 @@ const ChatPage = () => {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [chatType, setChatType] = useState<"TEAM" | "DIRECT">("TEAM");
+  const [currentChatRoomId, setCurrentChatRoomId] = useState<string | null>(
+    null
+  );
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedUserName, setSelectedUserName] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const wsClientRef = useRef(chatWebSocketClient);
+  const currentChatRoomIdRef = useRef<string | null>(null);
+  const chatTypeRef = useRef<"TEAM" | "DIRECT">("TEAM");
+
+  // ref 업데이트
+  useEffect(() => {
+    currentChatRoomIdRef.current = currentChatRoomId;
+    chatTypeRef.current = chatType;
+  }, [currentChatRoomId, chatType]);
 
   const activeMenu = "채팅";
 
@@ -41,55 +59,97 @@ const ChatPage = () => {
     }
   };
 
-  // 메시지 목록 조회
-  const fetchMessages = async (loadMore = false) => {
-    if (isLoading) return;
+  // ref로 최신 상태 관리
+  const nextCursorRef = useRef<string | null>(null);
+  const isLoadingRef = useRef(false);
+
+  // 메시지 목록 조회 (초기 로드 및 더보기용)
+  const fetchMessages = async (
+    loadMore = false,
+    roomId?: string | null,
+    type?: "TEAM" | "DIRECT"
+  ) => {
+    if (isLoadingRef.current) return;
+
+    const targetRoomId = roomId !== undefined ? roomId : currentChatRoomId;
+    const targetType = type !== undefined ? type : chatType;
 
     try {
+      isLoadingRef.current = true;
       setIsLoading(true);
       setError(null);
-      const response = await getMessages(50, loadMore ? nextCursor || undefined : undefined);
-      
+
+      const response = await getMessages(
+        50,
+        loadMore ? nextCursorRef.current || undefined : undefined,
+        targetRoomId || undefined,
+        targetType
+      );
+
       if (loadMore) {
         setMessages((prev) => [...response.messages, ...prev]);
       } else {
+        // 전체 조회: 메시지 교체
         setMessages(response.messages);
       }
-      
+
       setHasMore(response.hasMore);
+      nextCursorRef.current = response.nextCursor;
       setNextCursor(response.nextCursor);
     } catch (error: any) {
       console.error("메시지 조회 실패:", error);
       setError(error.message || "메시지를 불러오는데 실패했습니다.");
-      // 에러가 발생해도 빈 배열로 설정하여 UI가 깨지지 않도록
       if (!loadMore) {
         setMessages([]);
       }
     } finally {
+      isLoadingRef.current = false;
       setIsLoading(false);
     }
   };
 
-  // 메시지 전송
+  // 메시지 전송 (WebSocket 사용)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || isSending) return;
+    if (!newMessage.trim() || isSending || !isConnected) return;
 
     const messageContent = newMessage.trim();
     setNewMessage("");
     setIsSending(true);
 
     try {
-      await sendMessage(messageContent);
-      // 메시지 전송 후 목록 새로고침
-      await fetchMessages(false);
+      // 낙관적 업데이트: 전송한 메시지를 즉시 화면에 표시
+      const tempMessage: Message = {
+        id: `temp-${Date.now()}`,
+        chatRoomId: currentChatRoomId || "",
+        senderId: user?.id || "",
+        content: messageContent,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        sender: {
+          id: user?.id || "",
+          name: user?.name || "",
+          email: user?.email || "",
+          picture: user?.picture || null,
+        },
+      };
+      setMessages((prev) => [...prev, tempMessage]);
       scrollToBottom();
+
+      // WebSocket으로 메시지 전송
+      wsClientRef.current.sendMessage(
+        messageContent,
+        currentChatRoomId,
+        chatType
+      );
     } catch (error: any) {
       console.error("메시지 전송 실패:", error);
       const errorMessage = error.message || "메시지 전송에 실패했습니다.";
       alert(errorMessage);
       setNewMessage(messageContent); // 실패 시 입력 내용 복원
       setError(errorMessage);
+      // 낙관적 업데이트 롤백
+      setMessages((prev) => prev.filter((msg) => !msg.id.startsWith("temp-")));
     } finally {
       setIsSending(false);
     }
@@ -133,7 +193,9 @@ const ChatPage = () => {
           role: user.role,
         };
         // 본인이 이미 목록에 있으면 제거하고 맨 앞에 추가
-        const otherMembers = members.filter((m) => m.id !== user.id);
+        const otherMembers = members.filter(
+          (m: TeamMember) => m.id !== user.id
+        );
         setTeamMembers([currentUserMember, ...otherMembers]);
       } else {
         setTeamMembers(members);
@@ -144,22 +206,195 @@ const ChatPage = () => {
     }
   };
 
-  // 초기 메시지 로드 및 폴링 설정
+  // 참여자 클릭 핸들러
+  const handleMemberClick = async (memberId: string, memberName: string) => {
+    if (!isConnected) {
+      alert("WebSocket 연결이 필요합니다. 잠시만 기다려주세요.");
+      return;
+    }
+
+    if (memberId === user?.id) {
+      // 본인 클릭 시 팀 채팅으로
+      // 기존 채팅방에서 나가기
+      if (currentChatRoomId) {
+        wsClientRef.current.leaveRoom(currentChatRoomId);
+      }
+
+      // 상태 변경
+      setChatType("TEAM");
+      setSelectedUserId(null);
+      setSelectedUserName(null);
+      setCurrentChatRoomId(null);
+
+      // 메시지 초기화 및 팀 채팅방 로드
+      setMessages([]);
+      try {
+        const teamRoom = await getChatRoom();
+        setCurrentChatRoomId(teamRoom.id);
+        await fetchMessages(false, teamRoom.id, "TEAM");
+        // WebSocket으로 팀 채팅방 참여
+        wsClientRef.current.joinRoom("", "TEAM");
+      } catch (error) {
+        console.error("팀 채팅방 로드 실패:", error);
+      }
+    } else {
+      // 다른 사용자 클릭 시 개인 채팅
+      try {
+        // 기존 채팅방에서 나가기
+        if (currentChatRoomId) {
+          wsClientRef.current.leaveRoom(currentChatRoomId);
+        }
+
+        // 개인 채팅방 생성/조회
+        const room = await getDirectChatRoom(memberId);
+
+        // 상태 변경
+        setChatType("DIRECT");
+        setSelectedUserId(memberId);
+        setSelectedUserName(memberName);
+        setCurrentChatRoomId(room.id);
+
+        // 메시지 초기화 및 개인 채팅방 로드
+        setMessages([]);
+        await fetchMessages(false, room.id, "DIRECT");
+
+        // WebSocket으로 개인 채팅방 참여
+        wsClientRef.current.joinRoom(room.id, "DIRECT");
+      } catch (error: any) {
+        console.error("개인 채팅방 생성 실패:", error);
+        alert(error.message || "개인 채팅방을 생성하는데 실패했습니다.");
+      }
+    }
+  };
+
+  // WebSocket 연결 및 메시지 수신 설정
   useEffect(() => {
-    fetchMessages(false);
-    fetchTeamMembers();
+    if (!token) {
+      console.log("⚠️ 사용자 토큰이 없습니다.");
+      return;
+    }
 
-    // 3초마다 새 메시지 확인 (폴링)
-    pollIntervalRef.current = setInterval(() => {
-      fetchMessages(false);
-    }, 3000);
+    if (!user) {
+      console.log("⚠️ 사용자 정보가 없습니다.");
+      return;
+    }
 
+    const wsClient = wsClientRef.current;
+
+    // 연결 성공 핸들러
+    wsClient.onConnect(() => {
+      console.log("✅ WebSocket 연결됨");
+      setIsConnected(true);
+      setError(null);
+    });
+
+    // 연결 종료 핸들러
+    wsClient.onDisconnect(() => {
+      console.log("🔌 WebSocket 연결 종료");
+      setIsConnected(false);
+    });
+
+    // 에러 핸들러
+    wsClient.onError((error) => {
+      console.error("❌ WebSocket 에러:", error);
+      setError(
+        error.message ||
+          "연결 오류가 발생했습니다. 백엔드 서버가 실행 중인지 확인해주세요."
+      );
+      setIsConnected(false);
+    });
+
+    // 메시지 수신 핸들러
+    wsClient.onMessage((message) => {
+      console.log("📨 WebSocket 메시지:", message.type, message);
+      if (message.type === "message" && message.data) {
+        // 새 메시지 수신
+        const newMsg = message.data as Message;
+
+        // 현재 채팅방의 메시지만 표시 (ref를 사용하여 최신 상태 확인)
+        const currentRoomId = currentChatRoomIdRef.current;
+        const currentType = chatTypeRef.current;
+
+        // 현재 채팅방의 메시지만 표시
+        const isCurrentRoomMessage =
+          (currentType === "TEAM" &&
+            (!currentRoomId || newMsg.chatRoomId === currentRoomId)) || // 팀 채팅방
+          (currentType === "DIRECT" && newMsg.chatRoomId === currentRoomId); // 개인 채팅방
+
+        if (!isCurrentRoomMessage) {
+          console.log("📨 다른 채팅방 메시지 무시:", {
+            메시지채팅방: newMsg.chatRoomId,
+            현재채팅방: currentRoomId,
+            채팅방타입: currentType,
+          });
+          return;
+        }
+
+        setMessages((prev) => {
+          // 중복 방지: 이미 있는 메시지는 추가하지 않음
+          if (prev.some((m) => m.id === newMsg.id)) {
+            return prev;
+          }
+          // 임시 메시지 제거 (서버에서 받은 실제 메시지로 교체)
+          const filtered = prev.filter((m) => !m.id.startsWith("temp-"));
+          return [...filtered, newMsg];
+        });
+        scrollToBottom();
+      } else if (message.type === "error") {
+        console.error("❌ 서버 오류:", message.message);
+        setError(message.message || "오류가 발생했습니다.");
+      } else if (message.type === "joined") {
+        console.log("✅ 채팅방 참여 완료:", message.roomId);
+        // 팀 채팅방의 경우 roomId를 상태에 저장
+        if (chatType === "TEAM" && message.roomId && !currentChatRoomId) {
+          setCurrentChatRoomId(message.roomId);
+        }
+      } else if (message.type === "message_sent") {
+        console.log("✅ 메시지 전송 확인:", message.messageId);
+      } else if (message.type === "connected") {
+        console.log("✅ WebSocket 연결 확인:", message.message);
+        setIsConnected(true);
+      }
+    });
+
+    // WebSocket 연결 (핸들러 등록 후)
+    console.log("🔌 WebSocket 연결 시작...");
+    wsClient.connect(token);
+
+    // 컴포넌트 언마운트 시 연결 종료
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
+      console.log("🔌 WebSocket 연결 종료 (컴포넌트 언마운트)");
+      wsClient.disconnect();
+    };
+  }, [token, user]);
+
+  // 초기 메시지 로드 및 팀원 목록 조회
+  useEffect(() => {
+    if (user) {
+      fetchTeamMembers();
+    }
+  }, [user]);
+
+  // 초기 로드 시 팀 채팅방 설정 (handleMemberClick에서 처리하지 않는 경우만)
+  useEffect(() => {
+    if (!user || !isConnected) return;
+    // 이미 채팅방이 설정되어 있으면 스킵 (handleMemberClick에서 처리됨)
+    if (currentChatRoomId || chatType !== "TEAM") return;
+
+    const loadTeamChat = async () => {
+      try {
+        const teamRoom = await getChatRoom();
+        setCurrentChatRoomId(teamRoom.id);
+        await fetchMessages(false, teamRoom.id, "TEAM");
+        wsClientRef.current.joinRoom("", "TEAM");
+      } catch (error) {
+        console.error("팀 채팅방 로드 실패:", error);
       }
     };
-  }, [user]);
+
+    loadTeamChat();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isConnected]);
 
   // 새 메시지가 추가되면 스크롤
   useEffect(() => {
@@ -177,8 +412,7 @@ const ChatPage = () => {
         handleLoadMore();
         // 스크롤 위치 유지
         setTimeout(() => {
-          container.scrollTop =
-            container.scrollHeight - previousScrollHeight;
+          container.scrollTop = container.scrollHeight - previousScrollHeight;
         }, 0);
       }
     };
@@ -212,7 +446,11 @@ const ChatPage = () => {
         <div className="border-b border-gray-200 p-4">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-gray-800 whitespace-nowrap">
-              팀 채팅
+              {chatType === "TEAM"
+                ? "팀 채팅"
+                : selectedUserName
+                  ? `${selectedUserName}님과의 채팅`
+                  : "개인 채팅"}
             </h2>
             {/* 참여자 목록 */}
             <div className="flex items-center gap-2 overflow-x-auto flex-1 scrollbar-hide">
@@ -220,12 +458,15 @@ const ChatPage = () => {
                 teamMembers.map((member) => {
                   const isCurrentUser = member.id === user?.id;
                   return (
-                    <div
+                    <button
                       key={member.id}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 ${
+                      onClick={() => handleMemberClick(member.id, member.name)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 transition-colors ${
                         isCurrentUser
                           ? "bg-[#7F55B1] text-white shadow-sm"
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                          : selectedUserId === member.id
+                            ? "bg-[#7F55B1] text-white shadow-sm"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                       }`}
                     >
                       <div
@@ -238,7 +479,7 @@ const ChatPage = () => {
                         {member.name.charAt(0)}
                       </div>
                       <span className="text-sm font-medium">{member.name}</span>
-                    </div>
+                    </button>
                   );
                 })
               ) : (
@@ -256,6 +497,19 @@ const ChatPage = () => {
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
               <p className="text-sm text-red-800">{error}</p>
+            </div>
+          )}
+
+          {!isConnected && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-yellow-800">
+                연결 중... 잠시만 기다려주세요.
+                <br />
+                <span className="text-xs text-yellow-600">
+                  백엔드 서버가 실행 중인지 확인해주세요. (브라우저 콘솔에서
+                  오류 확인)
+                </span>
+              </p>
             </div>
           )}
 
@@ -369,10 +623,10 @@ const ChatPage = () => {
             />
             <button
               type="submit"
-              disabled={!newMessage.trim() || isSending}
+              disabled={!newMessage.trim() || isSending || !isConnected}
               className="px-6 py-2 bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSending ? "전송 중..." : "전송"}
+              {!isConnected ? "연결 중..." : isSending ? "전송 중..." : "전송"}
             </button>
           </div>
         </form>
