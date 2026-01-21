@@ -173,6 +173,44 @@ router.post("/events", async (req, res) => {
       },
     });
 
+    // 연차/휴가 신청인 경우 팀장 이상에게 WebSocket 알림 전송
+    if ((type === "LEAVE" || type === "VACATION") && status === "PENDING") {
+      try {
+        // 팀의 팀장 이상 사용자 조회
+        const teamLeads = await prisma.user.findMany({
+          where: {
+            teamName: teamName,
+            role: { in: ["TEAM_LEAD", "MANAGER", "DIRECTOR"] },
+          },
+          select: { id: true },
+        });
+
+        // WebSocket 서버 인스턴스 가져오기
+        const ChatWebSocketServer = require("../websocket/chatServer");
+        const chatWSS = require("../server").chatWSS;
+
+        if (chatWSS) {
+          // 각 팀장 이상 사용자에게 알림 전송
+          teamLeads.forEach((lead) => {
+            chatWSS.broadcastToUser(lead.id, {
+              type: "leave_request",
+              data: {
+                eventId: event.id,
+                type: event.type,
+                title: event.title,
+                requesterName: event.requester.name,
+                startDate: event.startDate,
+                endDate: event.endDate,
+              },
+            });
+          });
+        }
+      } catch (error) {
+        console.error("연차/휴가 신청 알림 전송 오류:", error);
+        // 알림 전송 실패해도 일정 생성은 성공으로 처리
+      }
+    }
+
     res.status(201).json(event);
   } catch (error) {
     console.error("일정 생성 오류:", error);

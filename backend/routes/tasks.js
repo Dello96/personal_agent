@@ -308,4 +308,106 @@ router.put("/:id/status", async (req, res) => {
 
 router.put("/:id/status", async (req, res) => {});
 
+// 참여자 노트 저장/수정
+router.put("/:id/participants/:participantId/note", async (req, res) => {
+  try {
+    const { id, participantId } = req.params;
+    const { note } = req.body;
+    const { userId } = req.user;
+
+    // 업무 조회
+    const task = await prisma.task.findUnique({
+      where: { id },
+      include: {
+        participants: true,
+      },
+    });
+
+    if (!task) {
+      return res.status(404).json({ error: "업무를 찾을 수 없습니다." });
+    }
+
+    // 참여자 확인
+    const participant = task.participants.find(
+      (p) => p.id === participantId && p.userId === userId
+    );
+
+    if (!participant) {
+      return res.status(403).json({
+        error: "권한이 없습니다. 본인이 참여한 업무만 작성할 수 있습니다.",
+      });
+    }
+
+    // 노트 업데이트
+    const updatedParticipant = await prisma.taskParticipant.update({
+      where: { id: participantId },
+      data: { note: note || null },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
+
+    res.json(updatedParticipant);
+  } catch (error) {
+    console.error("참여자 노트 저장 오류:", error);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+// 참여자 노트 조회
+router.get("/:id/participants/notes", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.user;
+
+    // 업무 조회
+    const task = await prisma.task.findUnique({
+      where: { id },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!task) {
+      return res.status(404).json({ error: "업무를 찾을 수 없습니다." });
+    }
+
+    // 참여자 확인 (본인이 참여한 업무인지)
+    const isParticipant = task.participants.some((p) => p.userId === userId);
+    const isAssignee = task.assigneeId === userId;
+    const isAssigner = task.assignerId === userId;
+
+    if (!isParticipant && !isAssignee && !isAssigner) {
+      return res.status(403).json({
+        error: "권한이 없습니다.",
+      });
+    }
+
+    // 참여자별 노트 반환 (본인 노트만 또는 모든 노트)
+    const notes = task.participants
+      .filter((p) => p.note) // 노트가 있는 것만
+      .map((p) => ({
+        id: p.id,
+        userId: p.userId,
+        userName: p.user.name,
+        note: p.note,
+        updatedAt: p.updatedAt,
+        isOwn: p.userId === userId, // 본인 노트인지
+      }));
+
+    res.json(notes);
+  } catch (error) {
+    console.error("참여자 노트 조회 오류:", error);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
 module.exports = router;

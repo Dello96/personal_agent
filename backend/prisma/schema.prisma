@@ -68,7 +68,9 @@ model TaskParticipant {
   taskId    String
   userId    String
   role      ParticipantRole @default(PARTICIPANT) // 역할 구분
+  note      String?         // 참여자별 업무 작성 내용
   createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id])

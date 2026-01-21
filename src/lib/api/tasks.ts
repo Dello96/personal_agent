@@ -6,11 +6,22 @@ export interface TaskParticipant {
   id: string;
   userId: string;
   role: "OWNER" | "PARTICIPANT" | "REVIEWER";
+  note?: string | null;
+  updatedAt?: string;
   user: {
     id: string;
     name: string;
     email: string;
   };
+}
+
+export interface ParticipantNote {
+  id: string;
+  userId: string;
+  userName: string;
+  note: string;
+  updatedAt: string;
+  isOwn: boolean;
 }
 
 export interface Task {
@@ -88,4 +99,23 @@ export const updateTaskStatus = async (
     method: "PUT",
     body: JSON.stringify({ status, comment }),
   });
+};
+
+// 참여자 노트 저장/수정
+export const updateParticipantNote = async (
+  taskId: string,
+  participantId: string,
+  note: string
+): Promise<TaskParticipant> => {
+  return apiRequest(`/api/tasks/${taskId}/participants/${participantId}/note`, {
+    method: "PUT",
+    body: JSON.stringify({ note }),
+  });
+};
+
+// 참여자 노트 조회
+export const getParticipantNotes = async (
+  taskId: string
+): Promise<ParticipantNote[]> => {
+  return apiRequest(`/api/tasks/${taskId}/participants/notes`);
 };

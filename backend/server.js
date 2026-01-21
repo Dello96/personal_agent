@@ -299,6 +299,9 @@ const server = require("http").createServer(app);
 const ChatWebSocketServer = require("./websocket/chatServer");
 const chatWSS = new ChatWebSocketServer(server);
 
+// 다른 모듈에서 WebSocket 서버 인스턴스에 접근할 수 있도록 export
+module.exports.chatWSS = chatWSS;
+
 server.listen(8080, () => {
   console.log("server is running at 8080");
   console.log("WebSocket server is ready at ws://localhost:8080/ws/chat");
