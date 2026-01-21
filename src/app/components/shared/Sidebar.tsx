@@ -31,7 +31,16 @@ export default function Sidebar({
 }: SidebarProps) {
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
+  const user = useAuthStore((state) => state.user);
   const hasNewMessage = useNotificationStore((state) => state.hasNewMessage);
+  const hasPendingLeaveRequest = useNotificationStore(
+    (state) => state.hasPendingLeaveRequest
+  );
+  const pendingLeaveRequestCount = useNotificationStore(
+    (state) => state.pendingLeaveRequestCount
+  );
+  const isTeamLeadOrAbove =
+    user?.role && ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user.role);
 
   const handleLogout = () => {
     logout();
@@ -81,11 +90,22 @@ export default function Sidebar({
                 <span>{getMenuIcon(menu)}</span>
                 {menu}
               </div>
-              {menu === "채팅" && hasNewMessage && (
-                <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-semibold animate-pulse flex-shrink-0">
-                  New
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {menu === "채팅" && hasNewMessage && (
+                  <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-semibold animate-pulse flex-shrink-0">
+                    New
+                  </span>
+                )}
+                {menu === "일정" &&
+                  isTeamLeadOrAbove &&
+                  hasPendingLeaveRequest && (
+                    <span className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded-full font-semibold animate-pulse flex-shrink-0">
+                      {pendingLeaveRequestCount > 0
+                        ? pendingLeaveRequestCount
+                        : ""}
+                    </span>
+                  )}
+              </div>
             </button>
           ))}
         </nav>

@@ -3,10 +3,15 @@
 "use client";
 
 import { useAuthStore } from "@/app/stores/authStore";
-import { getTask } from "@/lib/api/tasks";
+import {
+  getTask,
+  updateTaskStatus,
+  updateParticipantNote,
+  getParticipantNotes,
+  ParticipantNote,
+} from "@/lib/api/tasks";
 import { useEffect, useState } from "react";
 import { Task } from "@/lib/api/tasks";
-import { updateTaskStatus } from "@/lib/api/tasks";
 
 interface TaskDetailProps {
   taskId: string;
@@ -24,6 +29,13 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
   const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
   const [taskStatus, setTaskStatus] = useState("OFF");
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [participantNotes, setParticipantNotes] = useState<ParticipantNote[]>(
+    []
+  );
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [noteContent, setNoteContent] = useState<{ [key: string]: string }>({});
+  const [isSavingNote, setIsSavingNote] = useState(false);
+
   const formatDate = (dateString: string | null | undefined): string => {
     if (!dateString) return "";
     return new Date(dateString).toISOString().slice(0, 10);
@@ -44,19 +56,38 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
       }
     };
 
-    fetchTask();
-  }, [isLoggedIn, user?.teamName]);
+    const fetchNotes = async () => {
+      try {
+        const notes = await getParticipantNotes(taskId);
+        setParticipantNotes(notes);
+      } catch (err) {
+        console.error("참여자 노트 조회 실패:", err);
+      }
+    };
 
-  // 진행률 바 데이터 (일별 진행 상황 - 임시)
-  const progressData = [
-    { day: "월", value: 20 },
-    { day: "화", value: 35 },
-    { day: "수", value: 45 },
-    { day: "목", value: 55 },
-    { day: "금", value: 65 },
-    { day: "토", value: 65 },
-    { day: "일", value: 65 },
-  ];
+    if (taskId) {
+      fetchTask();
+      fetchNotes();
+    }
+  }, [isLoggedIn, user?.teamName, taskId]);
+
+  // task가 로드된 후 노트 내용 초기화
+  useEffect(() => {
+    if (task && participantNotes.length > 0) {
+      const noteMap: { [key: string]: string } = {};
+      participantNotes.forEach((note) => {
+        if (note.isOwn) {
+          const participant = task.participants?.find(
+            (p) => p.userId === note.userId
+          );
+          if (participant) {
+            noteMap[participant.id] = note.note;
+          }
+        }
+      });
+      setNoteContent(noteMap);
+    }
+  }, [task, participantNotes]);
 
   const taskStatusHandler = () => {
     if (taskStatus === "OFF") {
@@ -254,7 +285,7 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
         </div>
         {/* 상태 변경 버튼 영역 */}
         <div className="flex items-center gap-3 flex-wrap">
-          {/* 1. OFF/ON 토글 버튼 (담당자만, PENDING/NOW 상태일 때) */}
+          {/* 1. OFF/ON 토글 버튼 (담당자만, PENDING/NOW 상태일 때) - 먼저 표시 */}
           {task?.assigneeId === user?.id &&
             (task?.status === "PENDING" || task?.status === "NOW") && (
               <button
@@ -270,7 +301,18 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
               </button>
             )}
 
-          {/* 2. 리뷰 버튼 영역 (팀장 이상, COMPLETED 상태일 때) */}
+          {/* 2. 취소 버튼 (CANCELLED, ENDING 상태가 아닐 때) - OFF/ON 버튼 다음에 표시 */}
+          {task?.status !== "CANCELLED" && task?.status !== "ENDING" && (
+            <button
+              onClick={handleCancel}
+              disabled={isUpdatingStatus}
+              className="px-6 py-2 bg-red-500 text-white rounded-full font-medium hover:bg-red-600 transition-all disabled:opacity-50"
+            >
+              취소
+            </button>
+          )}
+
+          {/* 3. 리뷰 버튼 영역 (팀장 이상, COMPLETED 상태일 때) */}
           {["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "") &&
             task?.status === "COMPLETED" && (
               <div className="flex gap-2">
@@ -291,22 +333,11 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
               </div>
             )}
 
-          {/* 3. REVIEW 상태 표시 (검토 중) */}
+          {/* 4. REVIEW 상태 표시 (검토 중) */}
           {task?.status === "REVIEW" && (
             <div className="px-4 py-2 bg-yellow-100 text-yellow-800 rounded-full font-medium">
               검토 중...
             </div>
-          )}
-
-          {/* 4. 취소 버튼 (CANCELLED, ENDING 상태가 아닐 때) */}
-          {task?.status !== "CANCELLED" && task?.status !== "ENDING" && (
-            <button
-              onClick={handleCancel}
-              disabled={isUpdatingStatus}
-              className="px-6 py-2 bg-red-500 text-white rounded-full font-medium hover:bg-red-600 transition-all disabled:opacity-50"
-            >
-              취소
-            </button>
           )}
 
           {/* 5. 종료 버튼 (COMPLETED 상태일 때, 팀장 이상만) */}
@@ -335,148 +366,284 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
         </div>
       </div>
 
-      {/* 진행률 표시 영역 */}
-      <div className="mb-8">
-        <div className="flex items-baseline gap-3 mb-2">
-          <span className="text-4xl font-bold text-gray-800">
-            {task?.progress || 0}%
-          </span>
-          <span className="text-green-500 text-sm flex items-center gap-1">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-            +15% 이번 주
-          </span>
-        </div>
-        <p className="text-gray-400 text-sm mb-4">전체 진행률</p>
+      {/* 참여자별 업무 작성 영역 (members 탭) */}
+      {activeTab === "members" && (
+        <div className="mb-8">
+          <h3 className="text-xl font-bold text-gray-800 mb-4">
+            참여자별 업무 작성
+          </h3>
+          <div className="space-y-4">
+            {task?.participants?.map((participant) => {
+              const isCurrentUser = participant.userId === user?.id;
+              const currentNote = noteContent[participant.id] || "";
+              const isEditing = editingNoteId === participant.id;
 
-        {/* 진행률 바 */}
-        <div className="w-full bg-gray-100 rounded-full h-3 mb-6">
-          <div
-            className="bg-gradient-to-r from-[#7F55B1] to-purple-400 h-3 rounded-full transition-all"
-            style={{ width: `${task?.progress || 0}%` }}
-          ></div>
-        </div>
-      </div>
+              return (
+                <div
+                  key={participant.id}
+                  className="bg-gray-50 rounded-2xl p-5 border-2 border-transparent hover:border-[#7F55B1]/20 transition-all"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-full flex items-center justify-center">
+                        <span className="text-white text-sm font-medium">
+                          {participant.user.name.charAt(0)}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-gray-800 font-semibold">
+                          {participant.user.name}
+                        </p>
+                        <p className="text-gray-400 text-xs">
+                          {participant.user.email}
+                        </p>
+                      </div>
+                    </div>
+                    {isCurrentUser && (
+                      <button
+                        onClick={() => {
+                          if (isEditing) {
+                            setEditingNoteId(null);
+                          } else {
+                            setEditingNoteId(participant.id);
+                            setNoteContent({
+                              ...noteContent,
+                              [participant.id]:
+                                participant.note || currentNote || "",
+                            });
+                          }
+                        }}
+                        className="px-4 py-2 text-sm bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] transition-colors"
+                      >
+                        {isEditing ? "취소" : "작성/수정"}
+                      </button>
+                    )}
+                  </div>
 
-      {/* 막대 그래프 영역 */}
-      <div className="mb-8">
-        <div className="flex items-end justify-between h-40 gap-4 px-4">
-          {progressData.map((data, index) => (
-            <div key={index} className="flex flex-col items-center flex-1">
-              <div
-                className="w-full bg-gradient-to-t from-[#7F55B1] to-purple-300 rounded-t-lg transition-all hover:from-[#6B479A] hover:to-purple-400"
-                style={{ height: `${data.value}%` }}
-              ></div>
-              <span className="text-xs text-gray-400 mt-2">{data.day}</span>
-            </div>
-          ))}
-        </div>
-        <div className="flex items-center gap-4 mt-4 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 bg-[#7F55B1] rounded-full"></span>
-            <span className="text-gray-500">이번 주</span>
+                  {isEditing && isCurrentUser ? (
+                    <div className="space-y-3">
+                      <textarea
+                        value={currentNote}
+                        onChange={(e) => {
+                          setNoteContent({
+                            ...noteContent,
+                            [participant.id]: e.target.value,
+                          });
+                        }}
+                        placeholder="업무 내용을 작성해주세요..."
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7F55B1] resize-none"
+                        rows={5}
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              setIsSavingNote(true);
+                              await updateParticipantNote(
+                                taskId,
+                                participant.id,
+                                currentNote
+                              );
+                              // 노트 목록 새로고침
+                              const notes = await getParticipantNotes(taskId);
+                              setParticipantNotes(notes);
+                              setEditingNoteId(null);
+                              // 업무 정보도 새로고침
+                              const updatedTask = await getTask(taskId);
+                              setTask(updatedTask);
+                            } catch (error: any) {
+                              console.error("노트 저장 실패:", error);
+                              alert(
+                                error.message || "노트 저장에 실패했습니다."
+                              );
+                            } finally {
+                              setIsSavingNote(false);
+                            }
+                          }}
+                          disabled={isSavingNote}
+                          className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isSavingNote ? "저장 중..." : "저장"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-lg p-4 min-h-[100px]">
+                      {participant.note ? (
+                        <p className="text-gray-700 text-sm whitespace-pre-wrap">
+                          {participant.note}
+                        </p>
+                      ) : (
+                        <p className="text-gray-400 text-sm italic">
+                          {isCurrentUser
+                            ? "작성된 내용이 없습니다. '작성/수정' 버튼을 클릭하여 업무 내용을 작성해주세요."
+                            : "작성된 내용이 없습니다."}
+                        </p>
+                      )}
+                      {participant.updatedAt && (
+                        <p className="text-gray-400 text-xs mt-2">
+                          마지막 수정:{" "}
+                          {new Date(participant.updatedAt).toLocaleString(
+                            "ko-KR"
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 bg-gray-300 rounded-full"></span>
-            <span className="text-gray-500">지난 주</span>
-          </div>
         </div>
-      </div>
+      )}
 
-      {/* 하단 3개 카드 영역 */}
-      <div className="grid grid-cols-3 gap-4">
-        {/* 담당자 정보 카드 */}
-        <div className="bg-gray-50 rounded-2xl p-5">
-          <h3 className="text-gray-800 font-semibold mb-4">담당자 정보</h3>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-full flex items-center justify-center">
-              <span className="text-white text-sm font-medium">
-                {task?.assignee?.name}
-              </span>
+      {/* 하단 카드 영역 */}
+      {activeTab === "detail" && (
+        <div className="space-y-6">
+          {/* 본인이 작성한 할일 표시 */}
+          {task?.participants?.find((p) => p.userId === user?.id) && (
+            <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-2xl p-6 border-2 border-[#7F55B1]/20">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                  <span>📝</span>
+                  내가 작성한 할일
+                </h3>
+                <button
+                  onClick={() => setActiveTab("members")}
+                  className="text-sm text-[#7F55B1] hover:text-[#6B479A] font-medium hover:underline"
+                >
+                  수정하기 →
+                </button>
+              </div>
+              <div className="bg-white rounded-lg p-4 min-h-[120px]">
+                {(() => {
+                  const myParticipant = task.participants.find(
+                    (p) => p.userId === user?.id
+                  );
+                  return myParticipant?.note ? (
+                    <p className="text-gray-700 text-sm whitespace-pre-wrap leading-relaxed">
+                      {myParticipant.note}
+                    </p>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full py-8">
+                      <p className="text-gray-400 text-sm italic mb-2">
+                        아직 작성된 내용이 없습니다.
+                      </p>
+                      <button
+                        onClick={() => setActiveTab("members")}
+                        className="px-4 py-2 bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] transition-colors text-sm font-medium"
+                      >
+                        할일 작성하기
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
-            <div>
-              <p className="text-gray-800 font-medium text-sm">
-                {task?.assignee?.name}
-              </p>
-              <p className="text-gray-400 text-xs">{task?.assignee?.email}</p>
+          )}
+
+          {/* 레퍼런스 이미지 미리보기 */}
+          {task?.referenceImageUrls && task.referenceImageUrls.length > 0 && (
+            <div className="bg-gray-50 rounded-2xl p-6">
+              <h3 className="text-gray-800 font-semibold mb-4 text-lg">
+                레퍼런스 이미지 ({task.referenceImageUrls.length}개)
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {task.referenceImageUrls.map(
+                  (imageUrl: string, index: number) => (
+                    <div
+                      key={index}
+                      className="relative group cursor-pointer bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all"
+                      onClick={() => {
+                        window.open(imageUrl, "_blank");
+                      }}
+                    >
+                      <div className="aspect-square relative">
+                        <img
+                          src={imageUrl}
+                          alt={`레퍼런스 이미지 ${index + 1}`}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.src = "/images/placeholder.png";
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
+                          <span className="text-white opacity-0 group-hover:opacity-100 text-sm font-medium bg-black/50 px-3 py-1 rounded">
+                            클릭하여 확대
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-2 bg-white">
+                        <p className="text-xs text-gray-500 text-center truncate">
+                          이미지 {index + 1}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* 업무 설명 카드 */}
-        <div className="bg-gray-50 rounded-2xl p-5">
-          <h3 className="text-gray-800 font-semibold mb-4">업무 설명</h3>
-          <p className="text-gray-600 text-sm leading-relaxed line-clamp-4">
-            {task?.description}
-          </p>
-          <button className="text-[#7F55B1] text-sm mt-3 hover:underline">
-            자세히 보기
-          </button>
-        </div>
-
-        {/* 참여자 카드 */}
-        <div className="bg-gray-50 rounded-2xl p-5">
-          <h3 className="text-gray-800 font-semibold mb-4">참여자</h3>
-          <div className="space-y-3">
-            {task?.participants?.slice(0, 3).map((participant) => (
-              <div key={participant.id} className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center">
-                  <span className="text-gray-600 text-xs">
-                    {participant.user.name}
+          {/* 3개 카드 영역 */}
+          <div className="grid grid-cols-3 gap-4">
+            {/* 담당자 정보 카드 */}
+            <div className="bg-gray-50 rounded-2xl p-5">
+              <h3 className="text-gray-800 font-semibold mb-4">담당자 정보</h3>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">
+                    {task?.assignee?.name}
                   </span>
                 </div>
-                <p className="text-gray-700 text-sm">{participant.user.name}</p>
+                <div>
+                  <p className="text-gray-800 font-medium text-sm">
+                    {task?.assignee?.name}
+                  </p>
+                  <p className="text-gray-400 text-xs">
+                    {task?.assignee?.email}
+                  </p>
+                </div>
               </div>
-            ))}
-          </div>
-          {task?.participants && task.participants.length > 3 && (
-            <p className="text-gray-400 text-xs mt-3">
-              +{task.participants.length - 3}명 더 보기
-            </p>
-          )}
-        </div>
-        {task?.referenceImageUrls && task.referenceImageUrls.length > 0 && (
-          <div className="mt-8">
-            <h3 className="text-gray-800 font-semibold mb-4">
-              레퍼런스 이미지
-            </h3>
-            <div className="grid grid-cols-3 gap-4">
-              {task.referenceImageUrls.map(
-                (imageUrl: string, index: number) => (
-                  <div
-                    key={index}
-                    className="relative group cursor-pointer"
-                    onClick={() => {
-                      // 이미지 확대 모달 (선택사항)
-                      window.open(imageUrl, "_blank");
-                    }}
-                  >
-                    <img
-                      src={imageUrl}
-                      alt={`레퍼런스 이미지 ${index + 1}`}
-                      className="w-full h-48 object-cover rounded-lg border border-gray-200 hover:border-[#7F55B1] transition-all"
-                      onError={(e) => {
-                        // 이미지 로드 실패 시 대체 이미지
-                        e.currentTarget.src = "/images/placeholder.png";
-                      }}
-                    />
-                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
-                      <span className="text-white opacity-0 group-hover:opacity-100 text-sm">
-                        클릭하여 확대
+            </div>
+
+            {/* 업무 설명 카드 */}
+            <div className="bg-gray-50 rounded-2xl p-5">
+              <h3 className="text-gray-800 font-semibold mb-4">업무 설명</h3>
+              <p className="text-gray-600 text-sm leading-relaxed line-clamp-4">
+                {task?.description}
+              </p>
+              <button className="text-[#7F55B1] text-sm mt-3 hover:underline">
+                자세히 보기
+              </button>
+            </div>
+
+            {/* 참여자 카드 */}
+            <div className="bg-gray-50 rounded-2xl p-5">
+              <h3 className="text-gray-800 font-semibold mb-4">참여자</h3>
+              <div className="space-y-3">
+                {task?.participants?.slice(0, 3).map((participant) => (
+                  <div key={participant.id} className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center">
+                      <span className="text-gray-600 text-xs">
+                        {participant.user.name}
                       </span>
                     </div>
+                    <p className="text-gray-700 text-sm">
+                      {participant.user.name}
+                    </p>
                   </div>
-                )
+                ))}
+              </div>
+              {task?.participants && task.participants.length > 3 && (
+                <p className="text-gray-400 text-xs mt-3">
+                  +{task.participants.length - 3}명 더 보기
+                </p>
               )}
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

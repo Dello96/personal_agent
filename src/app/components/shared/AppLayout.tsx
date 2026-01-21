@@ -50,6 +50,14 @@ export default function AppLayout({
         if (newMsg.senderId !== user.id && !isChatPage) {
           setHasNewMessage(true);
         }
+      } else if (message.type === "leave_request" && message.data) {
+        // 연차/휴가 신청 알림 (팀장 이상만)
+        const { role } = user;
+        if (["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+          const store = useNotificationStore.getState();
+          store.setHasPendingLeaveRequest(true);
+          store.setPendingLeaveRequestCount(store.pendingLeaveRequestCount + 1);
+        }
       }
     };
 

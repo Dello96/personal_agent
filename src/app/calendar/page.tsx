@@ -7,8 +7,16 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import AppLayout from "@/app/components/shared/AppLayout";
 import CalendarEventModal from "@/app/components/features/calendar/CalendarEventModal";
-import { getCalendarEvents, CalendarEvent } from "@/lib/api/calendar";
+import LeaveRequestApprovalModal from "@/app/components/features/calendar/LeaveRequestApprovalModal";
+import {
+  getCalendarEvents,
+  CalendarEvent,
+  getPendingCalendarEvents,
+} from "@/lib/api/calendar";
 import { getToday } from "@/lib/utils/dateFormat";
+import { useAuthStore } from "@/app/stores/authStore";
+import { useNotificationStore } from "@/app/stores/notificationStore";
+import { isTeamLeadOrAbove } from "@/lib/utils/role";
 
 const CalendarPage = () => {
   const { today, week, dayArray, setPreMonth, setNextMonth, setPresentMonth } =
@@ -21,6 +29,14 @@ const CalendarPage = () => {
   >(undefined);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+  const user = useAuthStore((state) => state.user);
+  const hasPendingLeaveRequest = useNotificationStore(
+    (state) => state.hasPendingLeaveRequest
+  );
+  const clearPendingLeaveRequest = useNotificationStore(
+    (state) => state.clearPendingLeaveRequest
+  );
 
   const activeMenu = "일정";
 
@@ -56,6 +72,28 @@ const CalendarPage = () => {
     fetchEvents();
   }, [today]);
 
+  // 캘린더 페이지 진입 시 승인 대기 중인 신청이 없으면 알림 제거
+  useEffect(() => {
+    if (isTeamLeadOrAbove(user?.role || "")) {
+      // 승인 대기 중인 신청 조회하여 알림 상태 동기화
+      const syncNotificationState = async () => {
+        try {
+          const pendingEvents = await getPendingCalendarEvents();
+          const store = useNotificationStore.getState();
+          if (pendingEvents.length === 0) {
+            store.clearPendingLeaveRequest();
+          } else {
+            store.setHasPendingLeaveRequest(true);
+            store.setPendingLeaveRequestCount(pendingEvents.length);
+          }
+        } catch (error) {
+          console.error("승인 대기 일정 조회 실패:", error);
+        }
+      };
+      syncNotificationState();
+    }
+  }, [user?.role]);
+
   const handleOpenModal = (
     type?: "MEETING_ROOM" | "MEETING" | "LEAVE" | "VACATION"
   ) => {
@@ -70,6 +108,12 @@ const CalendarPage = () => {
 
   const handleEventCreated = () => {
     fetchEvents(); // 이벤트 목록 새로고침
+  };
+
+  const handleApprovalModalClose = () => {
+    setIsApprovalModalOpen(false);
+    // 일정 목록 새로고침
+    fetchEvents();
   };
 
   return (
@@ -122,6 +166,20 @@ const CalendarPage = () => {
             >
               연차 및 휴가 요청
             </button>
+            {isTeamLeadOrAbove(user?.role || "") && (
+              <button
+                type="button"
+                className="px-3 py-1.5 text-sm bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors font-medium relative"
+                onClick={() => setIsApprovalModalOpen(true)}
+              >
+                승인 대기
+                {hasPendingLeaveRequest && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-orange-500 text-white rounded-full text-xs flex items-center justify-center">
+                    !
+                  </span>
+                )}
+              </button>
+            )}
             <button
               type="button"
               className="px-4 py-2 bg-[#7F55B1] text-white rounded-xl hover:bg-[#6B479A] transition-colors font-medium"
@@ -152,6 +210,18 @@ const CalendarPage = () => {
         initialEventType={initialEventType}
         onEventCreated={handleEventCreated}
       />
+
+      {/* 연차/휴가 승인 모달 */}
+      {isTeamLeadOrAbove(user?.role || "") && (
+        <LeaveRequestApprovalModal
+          isOpen={isApprovalModalOpen}
+          onClose={handleApprovalModalClose}
+          onApproved={() => {
+            fetchEvents();
+            handleApprovalModalClose();
+          }}
+        />
+      )}
     </AppLayout>
   );
 };

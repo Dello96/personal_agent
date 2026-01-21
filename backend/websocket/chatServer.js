@@ -393,6 +393,18 @@ class ChatWebSocketServer {
       }
     });
   }
+
+  // 특정 사용자에게 메시지 전송 (외부에서 호출 가능)
+  broadcastToUser(userId, message) {
+    const userWsSet = userConnections.get(userId);
+    if (userWsSet) {
+      userWsSet.forEach((ws) => {
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(message));
+        }
+      });
+    }
+  }
 }
 
 module.exports = ChatWebSocketServer;
