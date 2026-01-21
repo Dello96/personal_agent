@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
 import { getRoleLabel } from "@/lib/utils/roleUtils";
 
-interface AppHeaderProps {
+export interface AppHeaderProps {
   showBackButton?: boolean;
   title?: string;
   onBackClick?: () => void;
@@ -90,4 +90,3 @@ export default function AppHeader({
     </header>
   );
 }
-

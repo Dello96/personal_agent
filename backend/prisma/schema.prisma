@@ -8,7 +8,7 @@ datasource db {
 
 model User {
   id        String   @id @default(uuid())
-  password String?
+  password  String?
   email     String   @unique
   name      String
   picture   String?
@@ -18,22 +18,25 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  assignedTasks  Task[] @relation("Assignee")
-  assignedTasks2 Task[] @relation("Assigner")
-  participatingTasks TaskParticipant[]
-  requestedCalendarEvents CalendarEvent[] @relation("CalendarEventRequester")
-  approvedCalendarEvents  CalendarEvent[] @relation("CalendarEventApprover")
+  assignedTasks           Task[]            @relation("Assignee")
+  assignedTasks2          Task[]            @relation("Assigner")
+  participatingTasks      TaskParticipant[]
+  requestedCalendarEvents CalendarEvent[]   @relation("CalendarEventRequester")
+  approvedCalendarEvents  CalendarEvent[]   @relation("CalendarEventApprover")
+  messages                Message[]         @relation("MessageSender")
+  chatRoomParticipants    ChatRoomParticipant[] @relation("ChatRoomParticipant")
 }
 
 model Team {
   id        String   @id @default(uuid())
   teamName  String   @unique
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt 
+  updatedAt DateTime @updatedAt
 
-  members User[] @relation("TeamMembers")
-  tasks   Task[]
+  members        User[]          @relation("TeamMembers")
+  tasks          Task[]
   calendarEvents CalendarEvent[]
+  chatRoom       ChatRoom?
 }
 
 model Task {
@@ -54,29 +57,29 @@ model Task {
   assigner User @relation("Assigner", fields: [assignerId], references: [id])
   team     Team @relation(fields: [teamId], references: [teamName])
 
-  participants  TaskParticipant[]
-  
-  statusHistory TaskStatusHistory[]
-  referenceImageUrls String[] @default([])
+  participants TaskParticipant[]
+
+  statusHistory      TaskStatusHistory[]
+  referenceImageUrls String[]            @default([])
 }
 
 model TaskParticipant {
-  id        String   @id @default(uuid())
+  id        String          @id @default(uuid())
   taskId    String
   userId    String
-  role      ParticipantRole @default(PARTICIPANT)  // 역할 구분
-  createdAt DateTime @default(now())
+  role      ParticipantRole @default(PARTICIPANT) // 역할 구분
+  createdAt DateTime        @default(now())
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id])
 
-  @@unique([taskId, userId])  // 같은 업무에 같은 사용자 중복 방지
+  @@unique([taskId, userId]) // 같은 업무에 같은 사용자 중복 방지
 }
 
 enum ParticipantRole {
-  OWNER       // 주담당자
+  OWNER // 주담당자
   PARTICIPANT // 참여자
-  REVIEWER    // 검토자
+  REVIEWER // 검토자
 }
 
 model TaskStatusHistory {
@@ -115,16 +118,16 @@ enum Priority {
 }
 
 enum CalendarEventType {
-  MEETING_ROOM    
-  MEETING         
-  LEAVE          
-  VACATION        
+  MEETING_ROOM
+  MEETING
+  LEAVE
+  VACATION
 }
 
 enum CalendarEventStatus {
-  PENDING      
-  APPROVED       
-  REJECTED      
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model CalendarEvent {
@@ -134,18 +137,67 @@ model CalendarEvent {
   description String?
   startDate   DateTime
   endDate     DateTime
-  location    String?             // 회의실/미팅 장소
-  status      CalendarEventStatus  @default(APPROVED) // 회의실/미팅은 기본 APPROVED
-  requestedBy String              // 요청자 ID
-  approvedBy  String?             // 승인자 ID (연차/휴가만)
-  teamId      String              // 팀 ID
+  location    String? // 회의실/미팅 장소
+  status      CalendarEventStatus @default(APPROVED) // 회의실/미팅은 기본 APPROVED
+  requestedBy String // 요청자 ID
+  approvedBy  String? // 승인자 ID (연차/휴가만)
+  teamId      String // 팀 ID
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 
-  requester   User   @relation("CalendarEventRequester", fields: [requestedBy], references: [id])
-  approver     User?  @relation("CalendarEventApprover", fields: [approvedBy], references: [id])
-  team         Team   @relation(fields: [teamId], references: [teamName])
+  requester User  @relation("CalendarEventRequester", fields: [requestedBy], references: [id])
+  approver  User? @relation("CalendarEventApprover", fields: [approvedBy], references: [id])
+  team      Team  @relation(fields: [teamId], references: [teamName])
 
   @@index([startDate, endDate])
   @@index([teamId])
+}
+
+enum ChatRoomType {
+  TEAM      // 팀 채팅
+  DIRECT    // 개인 채팅 (1:1)
+}
+
+model ChatRoom {
+  id        String        @id @default(uuid())
+  type      ChatRoomType  @default(TEAM)
+  teamId    String?       @unique // 팀 채팅일 때만 사용
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  team      Team?         @relation(fields: [teamId], references: [teamName])
+  messages  Message[]
+  participants ChatRoomParticipant[] // 개인 채팅방 참여자
+
+  @@index([teamId])
+  @@index([type])
+}
+
+model ChatRoomParticipant {
+  id        String   @id @default(uuid())
+  chatRoomId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  user     User     @relation("ChatRoomParticipant", fields: [userId], references: [id])
+
+  @@unique([chatRoomId, userId])
+  @@index([userId])
+  @@index([chatRoomId])
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  chatRoomId String
+  senderId   String
+  content    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  sender   User     @relation("MessageSender", fields: [senderId], references: [id])
+
+  @@index([chatRoomId, createdAt])
+  @@index([senderId])
 }

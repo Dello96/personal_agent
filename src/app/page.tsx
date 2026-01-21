@@ -196,8 +196,9 @@ function HomeContent() {
     setActiveMenu(menu);
     if (menu === "일정") {
       router.push("/calendar");
-    }
-    if (menu === "진행중인 업무") {
+    } else if (menu === "채팅") {
+      router.push("/chat");
+    } else if (menu === "진행중인 업무") {
       router.push("/");
     }
   };

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
+import { useNotificationStore } from "@/app/stores/notificationStore";
 
 export type SidebarVariant = "default" | "task-detail" | "task-form";
 
@@ -30,6 +31,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
+  const hasNewMessage = useNotificationStore((state) => state.hasNewMessage);
 
   const handleLogout = () => {
     logout();
@@ -45,6 +47,8 @@ export default function Sidebar({
         router.push("/");
       } else if (menu === "일정") {
         router.push("/calendar");
+      } else if (menu === "채팅") {
+        router.push("/chat");
       }
     }
   };
@@ -67,14 +71,21 @@ export default function Sidebar({
             <button
               key={menu}
               onClick={() => handleDefaultMenuClick(menu)}
-              className={`w-full text-left px-4 py-3 rounded-xl transition-all flex items-center gap-3 ${
+              className={`w-full text-left px-4 py-3 rounded-xl transition-all flex items-center justify-between ${
                 activeMenu === menu
                   ? "bg-white text-[#7F55B1] shadow-lg font-semibold"
                   : "text-white/90 hover:bg-white/20"
               }`}
             >
-              <span>{getMenuIcon(menu)}</span>
-              {menu}
+              <div className="flex items-center gap-3">
+                <span>{getMenuIcon(menu)}</span>
+                {menu}
+              </div>
+              {menu === "채팅" && hasNewMessage && (
+                <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-semibold animate-pulse flex-shrink-0">
+                  New
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -202,4 +213,3 @@ export default function Sidebar({
 
   return null;
 }
-
