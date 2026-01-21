@@ -29,6 +29,8 @@ const CalendarPage = () => {
       router.push("/");
     } else if (menu === "일정") {
       router.push("/calendar");
+    } else if (menu === "채팅") {
+      router.push("/chat");
     }
   };
 

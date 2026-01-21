@@ -15,6 +15,7 @@ import { formatRelativeTime } from "@/lib/utils/dateFormat";
 import Image from "next/image";
 import { getTeamMembers, TeamMember } from "@/lib/api/users";
 import { chatWebSocketClient } from "@/lib/websocket/chatClient";
+import { useNotificationStore } from "@/app/stores/notificationStore";
 
 const ChatPage = () => {
   const router = useRouter();
@@ -40,6 +41,12 @@ const ChatPage = () => {
   const wsClientRef = useRef(chatWebSocketClient);
   const currentChatRoomIdRef = useRef<string | null>(null);
   const chatTypeRef = useRef<"TEAM" | "DIRECT">("TEAM");
+  const setHasNewMessage = useNotificationStore(
+    (state) => state.setHasNewMessage
+  );
+  const clearNewMessage = useNotificationStore(
+    (state) => state.clearNewMessage
+  );
 
   // ref 업데이트
   useEffect(() => {
@@ -114,42 +121,54 @@ const ChatPage = () => {
     if (!newMessage.trim() || isSending || !isConnected) return;
 
     const messageContent = newMessage.trim();
+    const tempId = `temp-${Date.now()}-${Math.random()}`;
+
+    // 낙관적 업데이트: 전송한 메시지를 즉시 화면에 표시
+    const tempMessage: Message = {
+      id: tempId,
+      chatRoomId: currentChatRoomId || "",
+      senderId: user?.id || "",
+      content: messageContent,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      sender: {
+        id: user?.id || "",
+        name: user?.name || "",
+        email: user?.email || "",
+        picture: user?.picture || null,
+      },
+    };
+
+    // 즉시 메시지 추가 및 스크롤
+    setMessages((prev) => [...prev, tempMessage]);
     setNewMessage("");
     setIsSending(true);
 
-    try {
-      // 낙관적 업데이트: 전송한 메시지를 즉시 화면에 표시
-      const tempMessage: Message = {
-        id: `temp-${Date.now()}`,
-        chatRoomId: currentChatRoomId || "",
-        senderId: user?.id || "",
-        content: messageContent,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        sender: {
-          id: user?.id || "",
-          name: user?.name || "",
-          email: user?.email || "",
-          picture: user?.picture || null,
-        },
-      };
-      setMessages((prev) => [...prev, tempMessage]);
+    // 스크롤을 다음 프레임에서 실행 (상태 업데이트 후)
+    setTimeout(() => {
       scrollToBottom();
+    }, 0);
 
+    try {
       // WebSocket으로 메시지 전송
       wsClientRef.current.sendMessage(
         messageContent,
         currentChatRoomId,
         chatType
       );
+
+      // 전송 성공 (서버에서 브로드캐스트된 메시지가 오면 임시 메시지가 자동으로 교체됨)
     } catch (error: any) {
       console.error("메시지 전송 실패:", error);
       const errorMessage = error.message || "메시지 전송에 실패했습니다.";
-      alert(errorMessage);
-      setNewMessage(messageContent); // 실패 시 입력 내용 복원
+
+      // 낙관적 업데이트 롤백: 임시 메시지 제거
+      setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
+
+      // 입력 내용 복원
+      setNewMessage(messageContent);
       setError(errorMessage);
-      // 낙관적 업데이트 롤백
-      setMessages((prev) => prev.filter((msg) => !msg.id.startsWith("temp-")));
+      alert(errorMessage);
     } finally {
       setIsSending(false);
     }
@@ -281,6 +300,9 @@ const ChatPage = () => {
 
     const wsClient = wsClientRef.current;
 
+    // 전역 연결이 이미 있으면 재연결하지 않음 (AppLayout에서 관리)
+    // 채팅 페이지에서는 채팅방 참여/나가기만 처리
+
     // 연결 성공 핸들러
     wsClient.onConnect(() => {
       console.log("✅ WebSocket 연결됨");
@@ -327,7 +349,18 @@ const ChatPage = () => {
             현재채팅방: currentRoomId,
             채팅방타입: currentType,
           });
+          // 현재 채팅방이 아니면 알림 표시 (본인이 보낸 메시지가 아닌 경우만)
+          if (newMsg.senderId !== user?.id) {
+            console.log("🔔 새 메시지 알림 설정");
+            setHasNewMessage(true);
+          }
           return;
+        }
+
+        // 현재 채팅방의 메시지를 받으면 알림 제거
+        if (isCurrentRoomMessage && newMsg.senderId !== user?.id) {
+          console.log("✅ 현재 채팅방 메시지 수신 - 알림 제거");
+          clearNewMessage();
         }
 
         setMessages((prev) => {
@@ -335,11 +368,30 @@ const ChatPage = () => {
           if (prev.some((m) => m.id === newMsg.id)) {
             return prev;
           }
-          // 임시 메시지 제거 (서버에서 받은 실제 메시지로 교체)
-          const filtered = prev.filter((m) => !m.id.startsWith("temp-"));
-          return [...filtered, newMsg];
+
+          // 같은 내용의 임시 메시지 찾기 (내가 보낸 메시지인 경우)
+          const tempMessageIndex = prev.findIndex(
+            (m) =>
+              m.id.startsWith("temp-") &&
+              m.content === newMsg.content &&
+              m.senderId === newMsg.senderId
+          );
+
+          if (tempMessageIndex !== -1) {
+            // 임시 메시지를 실제 메시지로 교체
+            const updated = [...prev];
+            updated[tempMessageIndex] = newMsg;
+            return updated;
+          }
+
+          // 임시 메시지가 없으면 새로 추가
+          return [...prev, newMsg];
         });
-        scrollToBottom();
+
+        // 스크롤을 다음 프레임에서 실행
+        setTimeout(() => {
+          scrollToBottom();
+        }, 0);
       } else if (message.type === "error") {
         console.error("❌ 서버 오류:", message.message);
         setError(message.message || "오류가 발생했습니다.");
@@ -357,9 +409,14 @@ const ChatPage = () => {
       }
     });
 
-    // WebSocket 연결 (핸들러 등록 후)
-    console.log("🔌 WebSocket 연결 시작...");
-    wsClient.connect(token);
+    // WebSocket 연결 (이미 연결되어 있으면 스킵, AppLayout에서 관리)
+    if (!wsClient.isConnected()) {
+      console.log("🔌 채팅 페이지: WebSocket 연결 시작...");
+      wsClient.connect(token);
+    } else {
+      console.log("🔌 채팅 페이지: 전역 WebSocket 연결 사용");
+      setIsConnected(true);
+    }
 
     // 컴포넌트 언마운트 시 연결 종료
     return () => {
@@ -367,6 +424,14 @@ const ChatPage = () => {
       wsClient.disconnect();
     };
   }, [token, user]);
+
+  // 채팅 페이지 진입 시 현재 채팅방이 있으면 알림 제거
+  useEffect(() => {
+    // 채팅방이 로드된 후에만 알림 제거 (현재 보고 있는 채팅방이 있을 때)
+    if (currentChatRoomId) {
+      clearNewMessage();
+    }
+  }, [currentChatRoomId, clearNewMessage]);
 
   // 초기 메시지 로드 및 팀원 목록 조회
   useEffect(() => {
@@ -435,6 +500,76 @@ const ChatPage = () => {
     );
   }
 
+  const isRecentMessageGroup = (
+    currentMessage: Message,
+    previousMessage: Message | null
+  ): boolean => {
+    if (!previousMessage) return false;
+
+    const currentTime = new Date(currentMessage.createdAt).getTime();
+    const previousTime = new Date(previousMessage.createdAt).getTime();
+    const diffMs = currentTime - previousTime;
+    const diffMinutes = diffMs / (1000 * 60);
+
+    // 1분 미만이고 같은 사람이 보낸 메시지인 경우
+    return (
+      diffMinutes < 1 && currentMessage.senderId === previousMessage.senderId
+    );
+  };
+
+  // 메시지 타입 정의 (그룹 정보 포함)
+  type MessageGroup = {
+    messages: Message[];
+    senderId: string;
+    sender: Message["sender"];
+    isOwnGroup: boolean;
+  };
+
+  // 메시지들을 그룹으로 묶는 함수
+  const groupMessages = (
+    messages: Message[],
+    currentUserId: string
+  ): MessageGroup[] => {
+    if (messages.length === 0) return [];
+
+    const groups: MessageGroup[] = [];
+    let currentGroup: Message[] = [messages[0]];
+
+    for (let i = 1; i < messages.length; i++) {
+      const currentMessage = messages[i];
+      const previousMessage = messages[i - 1];
+
+      // 같은 사람이 보낸 메시지이고 1분 미만 차이인 경우
+      const isGrouped = isRecentMessageGroup(currentMessage, previousMessage);
+
+      if (isGrouped) {
+        // 같은 그룹에 추가
+        currentGroup.push(currentMessage);
+      } else {
+        // 현재 그룹을 저장하고 새 그룹 시작
+        groups.push({
+          messages: currentGroup,
+          senderId: currentGroup[0].senderId,
+          sender: currentGroup[0].sender,
+          isOwnGroup: currentGroup[0].senderId === currentUserId,
+        });
+        currentGroup = [currentMessage];
+      }
+    }
+
+    // 마지막 그룹 추가
+    if (currentGroup.length > 0) {
+      groups.push({
+        messages: currentGroup,
+        senderId: currentGroup[0].senderId,
+        sender: currentGroup[0].sender,
+        isOwnGroup: currentGroup[0].senderId === currentUserId,
+      });
+    }
+
+    return groups;
+  };
+
   return (
     <AppLayout
       activeMenu={activeMenu}
@@ -490,10 +625,7 @@ const ChatPage = () => {
         </div>
 
         {/* 메시지 목록 */}
-        <div
-          ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto p-4 space-y-4"
-        >
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4">
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
               <p className="text-sm text-red-800">{error}</p>
@@ -538,17 +670,19 @@ const ChatPage = () => {
             </div>
           )}
 
-          {messages.map((message) => {
-            const isOwnMessage = message.senderId === user?.id;
-            const senderName = message.sender?.name || "알 수 없음";
-            const senderPicture = message.sender?.picture;
+          {groupMessages(messages, user?.id || "").map((group, groupIndex) => {
+            const isOwnGroup = group.isOwnGroup;
+            const senderName = group.sender?.name || "알 수 없음";
+            const senderPicture = group.sender?.picture;
 
             return (
               <div
-                key={message.id}
-                className={`flex gap-3 ${isOwnMessage ? "flex-row-reverse" : "flex-row"}`}
+                key={`group-${groupIndex}-${group.messages[0].id}`}
+                className={`flex gap-3 ${
+                  isOwnGroup ? "flex-row-reverse" : "flex-row"
+                } mt-4`}
               >
-                {/* 프로필 이미지 */}
+                {/* 프로필 이미지 - 그룹의 첫 번째 메시지에만 표시 */}
                 <div className="flex-shrink-0">
                   {senderPicture ? (
                     <Image
@@ -565,41 +699,63 @@ const ChatPage = () => {
                   )}
                 </div>
 
-                {/* 메시지 내용 */}
-                <div
-                  className={`flex flex-col max-w-[70%] ${
-                    isOwnMessage ? "items-end" : "items-start"
-                  }`}
-                >
-                  {!isOwnMessage && (
+                {/* 메시지 그룹 컨테이너 */}
+                <div className="flex flex-col gap-1 flex-1 min-w-0">
+                  {/* 그룹 내 첫 번째 메시지에만 이름 표시 */}
+                  {!isOwnGroup && (
                     <span className="text-xs text-gray-500 mb-1">
                       {senderName}
                     </span>
                   )}
-                  <div
-                    className={`rounded-2xl px-4 py-2 ${
-                      isOwnMessage
-                        ? "bg-[#7F55B1] text-white"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    <p className="text-sm whitespace-pre-wrap break-words">
-                      {message.content}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs text-gray-400">
-                      {formatRelativeTime(message.createdAt)}
-                    </span>
-                    {isOwnMessage && (
-                      <button
-                        onClick={() => handleDeleteMessage(message.id)}
-                        className="text-xs text-gray-400 hover:text-red-500"
+
+                  {/* 그룹 내 모든 메시지 렌더링 */}
+                  {group.messages.map((message, msgIndex) => {
+                    const isLastInGroup =
+                      msgIndex === group.messages.length - 1;
+
+                    return (
+                      <div
+                        key={message.id}
+                        className={`flex flex-col ${
+                          isOwnGroup ? "items-end" : "items-start"
+                        }`}
                       >
-                        삭제
-                      </button>
-                    )}
-                  </div>
+                        {/* 메시지 버블 - 텍스트 길이에 맞게 조절 */}
+                        <div
+                          className={`px-4 py-2 rounded-lg ${
+                            isOwnGroup
+                              ? "bg-[#7F55B1] text-white"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                          style={{
+                            display: "inline-block",
+                            maxWidth: "70%",
+                          }}
+                        >
+                          <p className="text-sm whitespace-pre-wrap break-words">
+                            {message.content}
+                          </p>
+                        </div>
+
+                        {/* 시간 표시 - 그룹의 마지막 메시지에만 표시 */}
+                        {isLastInGroup && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-gray-400">
+                              {formatRelativeTime(message.createdAt)}
+                            </span>
+                            {isOwnGroup && (
+                              <button
+                                onClick={() => handleDeleteMessage(message.id)}
+                                className="text-xs text-gray-400 hover:text-red-500"
+                              >
+                                삭제
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );

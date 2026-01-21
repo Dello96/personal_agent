@@ -36,9 +36,24 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
   private reconnectTimer: NodeJS.Timeout | null = null;
 
   connect(token: string) {
+    // 이미 연결되어 있거나 연결 중이면 스킵
     if (this.ws?.readyState === WebSocket.OPEN) {
       console.log("WebSocket이 이미 연결되어 있습니다.");
       return;
+    }
+
+    // 연결 중이면 기존 연결 정리
+    if (this.ws?.readyState === WebSocket.CONNECTING) {
+      console.log("WebSocket 연결 중... 기존 연결 정리");
+      this.ws.close();
+      this.ws = null;
+    }
+
+    // 기존 연결이 있으면 정리
+    if (this.ws) {
+      console.log("기존 WebSocket 연결 정리");
+      this.ws.close();
+      this.ws = null;
     }
 
     this.token = token;
@@ -113,10 +128,15 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
     }
 
     if (this.ws) {
-      this.ws.close(1000, "정상 종료");
+      // 연결 상태에 따라 적절히 종료
+      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+        this.ws.close(1000, "정상 종료");
+      }
       this.ws = null;
     }
     this.token = null;
+    
+    // 콜백은 초기화하지 않음 (재연결 시 재사용)
   }
 
   joinRoom(roomId: string, roomType: ChatRoomType) {
