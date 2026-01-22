@@ -7,6 +7,7 @@ export interface TaskParticipant {
   userId: string;
   role: "OWNER" | "PARTICIPANT" | "REVIEWER";
   note?: string | null;
+  startedAt?: string | null;
   updatedAt?: string;
   user: {
     id: string;
@@ -61,6 +62,13 @@ export interface Task {
   };
   participants?: TaskParticipant[];
   referenceImageUrls?: string[];
+  isDevelopmentTask?: boolean;
+  githubRepository?: {
+    id: string;
+    owner: string;
+    repo: string;
+    isActive: boolean;
+  } | null;
 }
 
 // 업무 생성
@@ -72,6 +80,10 @@ export const createTask = async (data: {
   dueDate?: string;
   participantIds?: string[];
   referenceImageUrls?: string[];
+  isDevelopmentTask?: boolean;
+  githubOwner?: string;
+  githubRepo?: string;
+  githubAccessToken?: string;
 }): Promise<Task> => {
   return apiRequest("/api/tasks", {
     method: "POST",
@@ -118,4 +130,16 @@ export const getParticipantNotes = async (
   taskId: string
 ): Promise<ParticipantNote[]> => {
   return apiRequest(`/api/tasks/${taskId}/participants/notes`);
+};
+
+// 참여자 업무 시작 상태 업데이트
+export const updateParticipantStartStatus = async (
+  taskId: string,
+  participantId: string,
+  started: boolean
+): Promise<TaskParticipant> => {
+  return apiRequest(`/api/tasks/${taskId}/participants/${participantId}/start`, {
+    method: "PUT",
+    body: JSON.stringify({ started }),
+  });
 };

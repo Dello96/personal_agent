@@ -8,10 +8,12 @@ import {
   updateTaskStatus,
   updateParticipantNote,
   getParticipantNotes,
+  updateParticipantStartStatus,
   ParticipantNote,
 } from "@/lib/api/tasks";
 import { useEffect, useState } from "react";
 import { Task } from "@/lib/api/tasks";
+import TaskGithubActivityWidget from "@/app/components/features/github/TaskGithubActivityWidget";
 
 interface TaskDetailProps {
   taskId: string;
@@ -46,6 +48,8 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
       try {
         setLoading(true);
         const data = await getTask(taskId);
+        console.log("업무 데이터:", data);
+        console.log("참여자 데이터:", data?.participants);
         setTask(data);
         setError(null);
       } catch (err) {
@@ -97,21 +101,34 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
     }
   };
 
-  // OFF/ON 토글 핸들러
+  // OFF/ON 토글 핸들러 (참여자 모두 가능)
   const handleToggleStatus = async () => {
-    if (!task) return;
+    if (!task || !user) return;
 
     try {
       setIsUpdatingStatus(true);
 
+      // 현재 사용자가 참여자인지 확인
+      const isParticipant = task.participants?.some(
+        (p) => p.userId === user.id
+      );
+      const isAssignee = task.assigneeId === user.id;
+
+      if (!isParticipant && !isAssignee) {
+        alert("참여자만 업무를 시작할 수 있습니다.");
+        return;
+      }
+
       let newStatus: string;
+      let shouldUpdateParticipantStart = false;
 
       // 현재 상태에 따라 다음 상태 결정
       if (task.status === "PENDING") {
         // OFF → ON: PENDING → NOW
         newStatus = "NOW";
+        shouldUpdateParticipantStart = true;
       } else if (task.status === "NOW") {
-        // ON → COMPLETED: NOW → COMPLETED
+        // ON → COMPLETED: NOW → REVIEW
         newStatus = "REVIEW";
       } else {
         // 이미 완료된 상태
@@ -121,9 +138,27 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
       // API 호출
       const updatedTask = await updateTaskStatus(task.id, newStatus);
       setTask(updatedTask);
-    } catch (error) {
+
+      // 참여자 시작 상태 업데이트 (PENDING → NOW일 때만)
+      if (shouldUpdateParticipantStart && isParticipant) {
+        const participant = task.participants?.find(
+          (p) => p.userId === user.id
+        );
+        if (participant && !participant.startedAt) {
+          try {
+            await updateParticipantStartStatus(task.id, participant.id, true);
+            // 업무 정보 새로고침
+            const refreshedTask = await getTask(taskId);
+            setTask(refreshedTask);
+          } catch (error) {
+            console.error("참여자 시작 상태 업데이트 실패:", error);
+            // 실패해도 계속 진행
+          }
+        }
+      }
+    } catch (error: any) {
       console.error("상태 변경 실패:", error);
-      alert("상태 변경에 실패했습니다.");
+      alert(error.message || "상태 변경에 실패했습니다.");
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -285,32 +320,44 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
         </div>
         {/* 상태 변경 버튼 영역 */}
         <div className="flex items-center gap-3 flex-wrap">
-          {/* 1. OFF/ON 토글 버튼 (담당자만, PENDING/NOW 상태일 때) - 먼저 표시 */}
-          {task?.assigneeId === user?.id &&
-            (task?.status === "PENDING" || task?.status === "NOW") && (
+          {/* 1. OFF/ON 토글 버튼 (참여자 모두, PENDING/NOW 상태일 때) - 먼저 표시 */}
+          {(() => {
+            const isParticipant = task?.participants?.some(
+              (p) => p.userId === user?.id
+            );
+            const isAssignee = task?.assigneeId === user?.id;
+            const canToggle = isParticipant || isAssignee;
+
+            return (
+              canToggle &&
+              (task?.status === "PENDING" || task?.status === "NOW") && (
+                <button
+                  onClick={handleToggleStatus}
+                  disabled={isUpdatingStatus}
+                  className={`px-6 py-2 rounded-full font-medium transition-all ${
+                    task.status === "PENDING"
+                      ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      : "bg-[#7F55B1] text-white hover:bg-[#6B479A]"
+                  } disabled:opacity-50`}
+                >
+                  {task.status === "PENDING" ? "OFF" : "ON"}
+                </button>
+              )
+            );
+          })()}
+
+          {/* 2. 취소 버튼 (팀장급 이상만, CANCELLED, ENDING 상태가 아닐 때) - OFF/ON 버튼 다음에 표시 */}
+          {task?.status !== "CANCELLED" &&
+            task?.status !== "ENDING" &&
+            ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "") && (
               <button
-                onClick={handleToggleStatus}
+                onClick={handleCancel}
                 disabled={isUpdatingStatus}
-                className={`px-6 py-2 rounded-full font-medium transition-all ${
-                  task.status === "PENDING"
-                    ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    : "bg-[#7F55B1] text-white hover:bg-[#6B479A]"
-                } disabled:opacity-50`}
+                className="px-6 py-2 bg-red-500 text-white rounded-full font-medium hover:bg-red-600 transition-all disabled:opacity-50"
               >
-                {task.status === "PENDING" ? "OFF" : "ON"}
+                취소
               </button>
             )}
-
-          {/* 2. 취소 버튼 (CANCELLED, ENDING 상태가 아닐 때) - OFF/ON 버튼 다음에 표시 */}
-          {task?.status !== "CANCELLED" && task?.status !== "ENDING" && (
-            <button
-              onClick={handleCancel}
-              disabled={isUpdatingStatus}
-              className="px-6 py-2 bg-red-500 text-white rounded-full font-medium hover:bg-red-600 transition-all disabled:opacity-50"
-            >
-              취소
-            </button>
-          )}
 
           {/* 3. 리뷰 버튼 영역 (팀장 이상, COMPLETED 상태일 때) */}
           {["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "") &&
@@ -373,126 +420,150 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
             참여자별 업무 작성
           </h3>
           <div className="space-y-4">
-            {task?.participants?.map((participant) => {
-              const isCurrentUser = participant.userId === user?.id;
-              const currentNote = noteContent[participant.id] || "";
-              const isEditing = editingNoteId === participant.id;
+            {!task?.participants || task.participants.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                참여자가 없습니다.
+              </div>
+            ) : (
+              task.participants.map((participant) => {
+                if (!participant.user) {
+                  console.warn("참여자에 user 정보가 없습니다:", participant);
+                  return null;
+                }
+                const isCurrentUser = participant.userId === user?.id;
+                const currentNote = noteContent[participant.id] || "";
+                const isEditing = editingNoteId === participant.id;
 
-              return (
-                <div
-                  key={participant.id}
-                  className="bg-gray-50 rounded-2xl p-5 border-2 border-transparent hover:border-[#7F55B1]/20 transition-all"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-full flex items-center justify-center">
-                        <span className="text-white text-sm font-medium">
-                          {participant.user.name.charAt(0)}
-                        </span>
+                return (
+                  <div
+                    key={participant.id}
+                    className="bg-gray-50 rounded-2xl p-5 border-2 border-transparent hover:border-[#7F55B1]/20 transition-all"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-full flex items-center justify-center">
+                          <span className="text-white text-sm font-medium">
+                            {participant.user.name.charAt(0)}
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-gray-800 font-semibold">
+                              {participant.user.name}
+                            </p>
+                            {/* 업무 시작 여부 인디케이터 */}
+                            {participant.startedAt ? (
+                              <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                진행중
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-xs text-gray-400 font-medium">
+                                <span className="w-2 h-2 bg-gray-300 rounded-full"></span>
+                                대기중
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-gray-400 text-xs">
+                            {participant.user.email}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-gray-800 font-semibold">
-                          {participant.user.name}
-                        </p>
-                        <p className="text-gray-400 text-xs">
-                          {participant.user.email}
-                        </p>
-                      </div>
-                    </div>
-                    {isCurrentUser && (
-                      <button
-                        onClick={() => {
-                          if (isEditing) {
-                            setEditingNoteId(null);
-                          } else {
-                            setEditingNoteId(participant.id);
-                            setNoteContent({
-                              ...noteContent,
-                              [participant.id]:
-                                participant.note || currentNote || "",
-                            });
-                          }
-                        }}
-                        className="px-4 py-2 text-sm bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] transition-colors"
-                      >
-                        {isEditing ? "취소" : "작성/수정"}
-                      </button>
-                    )}
-                  </div>
-
-                  {isEditing && isCurrentUser ? (
-                    <div className="space-y-3">
-                      <textarea
-                        value={currentNote}
-                        onChange={(e) => {
-                          setNoteContent({
-                            ...noteContent,
-                            [participant.id]: e.target.value,
-                          });
-                        }}
-                        placeholder="업무 내용을 작성해주세요..."
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7F55B1] resize-none"
-                        rows={5}
-                      />
-                      <div className="flex justify-end gap-2">
+                      {isCurrentUser && (
                         <button
-                          onClick={async () => {
-                            try {
-                              setIsSavingNote(true);
-                              await updateParticipantNote(
-                                taskId,
-                                participant.id,
-                                currentNote
-                              );
-                              // 노트 목록 새로고침
-                              const notes = await getParticipantNotes(taskId);
-                              setParticipantNotes(notes);
+                          onClick={() => {
+                            if (isEditing) {
                               setEditingNoteId(null);
-                              // 업무 정보도 새로고침
-                              const updatedTask = await getTask(taskId);
-                              setTask(updatedTask);
-                            } catch (error: any) {
-                              console.error("노트 저장 실패:", error);
-                              alert(
-                                error.message || "노트 저장에 실패했습니다."
-                              );
-                            } finally {
-                              setIsSavingNote(false);
+                            } else {
+                              setEditingNoteId(participant.id);
+                              setNoteContent({
+                                ...noteContent,
+                                [participant.id]:
+                                  participant.note || currentNote || "",
+                              });
                             }
                           }}
-                          disabled={isSavingNote}
-                          className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-4 py-2 text-sm bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] transition-colors"
                         >
-                          {isSavingNote ? "저장 중..." : "저장"}
+                          {isEditing ? "취소" : "작성/수정"}
                         </button>
+                      )}
+                    </div>
+
+                    {isEditing && isCurrentUser ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={currentNote}
+                          onChange={(e) => {
+                            setNoteContent({
+                              ...noteContent,
+                              [participant.id]: e.target.value,
+                            });
+                          }}
+                          placeholder="업무 내용을 작성해주세요..."
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7F55B1] resize-none"
+                          rows={5}
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                setIsSavingNote(true);
+                                await updateParticipantNote(
+                                  taskId,
+                                  participant.id,
+                                  currentNote
+                                );
+                                // 노트 목록 새로고침
+                                const notes = await getParticipantNotes(taskId);
+                                setParticipantNotes(notes);
+                                setEditingNoteId(null);
+                                // 업무 정보도 새로고침
+                                const updatedTask = await getTask(taskId);
+                                setTask(updatedTask);
+                              } catch (error: any) {
+                                console.error("노트 저장 실패:", error);
+                                alert(
+                                  error.message || "노트 저장에 실패했습니다."
+                                );
+                              } finally {
+                                setIsSavingNote(false);
+                              }
+                            }}
+                            disabled={isSavingNote}
+                            className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isSavingNote ? "저장 중..." : "저장"}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="bg-white rounded-lg p-4 min-h-[100px]">
-                      {participant.note ? (
-                        <p className="text-gray-700 text-sm whitespace-pre-wrap">
-                          {participant.note}
-                        </p>
-                      ) : (
-                        <p className="text-gray-400 text-sm italic">
-                          {isCurrentUser
-                            ? "작성된 내용이 없습니다. '작성/수정' 버튼을 클릭하여 업무 내용을 작성해주세요."
-                            : "작성된 내용이 없습니다."}
-                        </p>
-                      )}
-                      {participant.updatedAt && (
-                        <p className="text-gray-400 text-xs mt-2">
-                          마지막 수정:{" "}
-                          {new Date(participant.updatedAt).toLocaleString(
-                            "ko-KR"
-                          )}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                    ) : (
+                      <div className="bg-white rounded-lg p-4 min-h-[100px]">
+                        {participant.note ? (
+                          <p className="text-gray-700 text-sm whitespace-pre-wrap">
+                            {participant.note}
+                          </p>
+                        ) : (
+                          <p className="text-gray-400 text-sm italic">
+                            {isCurrentUser
+                              ? "작성된 내용이 없습니다. '작성/수정' 버튼을 클릭하여 업무 내용을 작성해주세요."
+                              : "작성된 내용이 없습니다."}
+                          </p>
+                        )}
+                        {participant.updatedAt && (
+                          <p className="text-gray-400 text-xs mt-2">
+                            마지막 수정:{" "}
+                            {new Date(participant.updatedAt).toLocaleString(
+                              "ko-KR"
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -585,6 +656,11 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
             </div>
           )}
 
+          {/* GitHub 활동 위젯 (개발팀 업무인 경우만) */}
+          {task?.isDevelopmentTask && task?.githubRepository && (
+            <TaskGithubActivityWidget taskId={task.id} />
+          )}
+
           {/* 3개 카드 영역 */}
           <div className="grid grid-cols-3 gap-4">
             {/* 담당자 정보 카드 */}
@@ -621,25 +697,42 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
             {/* 참여자 카드 */}
             <div className="bg-gray-50 rounded-2xl p-5">
               <h3 className="text-gray-800 font-semibold mb-4">참여자</h3>
-              <div className="space-y-3">
-                {task?.participants?.slice(0, 3).map((participant) => (
-                  <div key={participant.id} className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center">
-                      <span className="text-gray-600 text-xs">
-                        {participant.user.name}
-                      </span>
+              <div className="space-y-3 max-h-[200px] overflow-y-auto pr-2 scrollbar-thin">
+                {task?.participants?.map((participant) => {
+                  const hasStarted = !!participant.startedAt;
+                  return (
+                    <div
+                      key={participant.id}
+                      className="flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-8 h-8 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-gray-600 text-xs">
+                            {participant.user.name}
+                          </span>
+                        </div>
+                        <p className="text-gray-700 text-sm truncate">
+                          {participant.user.name}
+                        </p>
+                      </div>
+                      {/* 업무 시작 여부 인디케이터 */}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {hasStarted ? (
+                          <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                            진행중
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-gray-400 font-medium">
+                            <span className="w-2 h-2 bg-gray-300 rounded-full"></span>
+                            대기중
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-gray-700 text-sm">
-                      {participant.user.name}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-              {task?.participants && task.participants.length > 3 && (
-                <p className="text-gray-400 text-xs mt-3">
-                  +{task.participants.length - 3}명 더 보기
-                </p>
-              )}
             </div>
           </div>
         </div>

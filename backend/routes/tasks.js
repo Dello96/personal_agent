@@ -2,9 +2,85 @@ const express = require("express");
 const router = express.Router();
 const prisma = require("../db/prisma");
 const authenticate = require("../middleware/auth"); // 추가
+const { Octokit } = require("@octokit/rest");
+const crypto = require("crypto");
 
 // 모든 라우트에 인증 미들웨어 적용
 router.use(authenticate);
+
+// GitHub 레포지토리 연결 헬퍼 함수
+async function connectTaskGitHubRepository(
+  taskId,
+  owner,
+  repo,
+  accessToken,
+  prismaClient
+) {
+  // GitHub API로 레포지토리 접근 권한 확인
+  const octokit = new Octokit({ auth: accessToken });
+  try {
+    await octokit.repos.get({ owner, repo });
+  } catch (error) {
+    if (error.status === 404) {
+      throw new Error("레포지토리를 찾을 수 없거나 접근 권한이 없습니다.");
+    }
+    throw error;
+  }
+
+  // Webhook secret 생성
+  const webhookSecret = crypto.randomBytes(32).toString("hex");
+
+  // Webhook URL (팀 레포지토리와 동일한 엔드포인트 사용)
+  const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8080";
+  const webhookUrl = `${BACKEND_URL}/api/github/webhook`;
+
+  // GitHub에 Webhook 생성
+  let webhookId = null;
+  try {
+    console.log(`Webhook 생성 시도: ${owner}/${repo} -> ${webhookUrl}`);
+    const webhookResponse = await octokit.repos.createWebhook({
+      owner,
+      repo,
+      name: "web",
+      active: true,
+      events: ["push", "pull_request"],
+      config: {
+        url: webhookUrl,
+        content_type: "json",
+        secret: webhookSecret,
+        insecure_ssl: process.env.NODE_ENV === "development" ? "1" : "0",
+      },
+    });
+    webhookId = webhookResponse.data.id;
+    console.log(`✅ Webhook 생성 성공: ID=${webhookId}`);
+  } catch (webhookError) {
+    console.error("❌ Webhook 생성 오류:", {
+      message: webhookError.message,
+      status: webhookError.status,
+      response: webhookError.response?.data,
+      owner,
+      repo,
+      webhookUrl,
+    });
+    // Webhook 생성 실패해도 레포지토리 연결은 계속 진행
+    // 사용자에게는 나중에 수동으로 Webhook을 생성하도록 안내할 수 있음
+  }
+
+  // TaskGitHubRepository 생성
+  const repository = await prismaClient.taskGitHubRepository.create({
+    data: {
+      taskId,
+      owner,
+      repo,
+      accessToken, // 실제로는 암호화해서 저장해야 함
+      webhookSecret,
+      webhookId,
+      isActive: true,
+    },
+  });
+
+  return repository;
+}
 
 // 상태 전이 검증 함수
 const isValidStatusTransition = (
@@ -74,8 +150,22 @@ router.get("/", async (req, res) => {
         team: { select: { id: true, teamName: true } },
         // ✅ 참여자 정보 포함
         participants: {
-          include: {
+          select: {
+            id: true,
+            userId: true,
+            role: true,
+            note: true,
+            updatedAt: true,
+            startedAt: true,
             user: { select: { id: true, name: true, email: true } },
+          },
+        },
+        githubRepository: {
+          select: {
+            id: true,
+            owner: true,
+            repo: true,
+            isActive: true,
           },
         },
       },
@@ -100,8 +190,22 @@ router.get("/:id", async (req, res) => {
         assigner: { select: { id: true, name: true, email: true } },
         team: { select: { id: true, teamName: true } },
         participants: {
-          include: {
+          select: {
+            id: true,
+            userId: true,
+            role: true,
+            note: true,
+            updatedAt: true,
+            startedAt: true,
             user: { select: { id: true, name: true, email: true } },
+          },
+        },
+        githubRepository: {
+          select: {
+            id: true,
+            owner: true,
+            repo: true,
+            isActive: true,
           },
         },
       },
@@ -129,6 +233,10 @@ router.post("/", async (req, res) => {
       dueDate,
       participantIds,
       referenceImageUrls,
+      isDevelopmentTask,
+      githubOwner,
+      githubRepo,
+      githubAccessToken,
     } = req.body;
     const { userId, teamName } = req.user;
 
@@ -146,6 +254,7 @@ router.post("/", async (req, res) => {
           dueDate: dueDate ? new Date(dueDate) : null,
           status: "PENDING",
           referenceImageUrls: referenceImageUrls || [],
+          isDevelopmentTask: isDevelopmentTask || false,
         },
       });
 
@@ -177,21 +286,65 @@ router.post("/", async (req, res) => {
       return tx.task.findUnique({
         where: { id: task.id },
         include: {
-          assignee: true,
-          assigner: true,
+          assignee: { select: { id: true, name: true, email: true } },
+          assigner: { select: { id: true, name: true, email: true } },
           participants: {
-            include: {
+            select: {
+              id: true,
+              userId: true,
+              role: true,
+              note: true,
+              updatedAt: true,
+              startedAt: true,
               user: { select: { id: true, name: true, email: true } },
+            },
+          },
+          githubRepository: {
+            select: {
+              id: true,
+              owner: true,
+              repo: true,
+              isActive: true,
             },
           },
         },
       });
     });
 
+    // 5. 개발팀 업무이고 GitHub 정보가 제공된 경우 레포지토리 연결 (트랜잭션 외부에서 처리)
+    if (isDevelopmentTask && githubOwner && githubRepo && githubAccessToken) {
+      // 트랜잭션 외부에서 GitHub 연결 시도 (실패해도 업무는 이미 생성됨)
+      connectTaskGitHubRepository(
+        result.id,
+        githubOwner,
+        githubRepo,
+        githubAccessToken,
+        prisma
+      ).catch((githubError) => {
+        console.error("GitHub 레포지토리 연결 오류 (비동기):", githubError);
+        console.error("에러 상세:", {
+          message: githubError.message,
+          stack: githubError.stack,
+          status: githubError.status,
+        });
+        // GitHub 연결 실패해도 업무는 이미 생성되었으므로 계속 진행
+      });
+    }
+
     res.status(201).json(result);
   } catch (error) {
     console.error("업무 생성 오류:", error);
-    res.status(500).json({ error: "서버 오류" });
+    console.error("에러 상세:", {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      name: error.name,
+    });
+    res.status(500).json({
+      error: "서버 오류",
+      details:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 });
 
@@ -202,17 +355,36 @@ router.put("/:id/status", async (req, res) => {
     const { status, comment } = req.body; // status와 comment(선택사항) 받기
     const { userId, role } = req.user;
 
-    // 1. 업무 조회
+    // 1. 업무 조회 (참여자 정보 포함)
     const task = await prisma.task.findUnique({
       where: { id },
       include: {
         assignee: true,
         assigner: true,
+        participants: {
+          include: {
+            user: { select: { id: true } },
+          },
+        },
       },
     });
 
     if (!task) {
       return res.status(404).json({ error: "업무를 찾을 수 없습니다." });
+    }
+
+    // 1-1. 참여자 확인 (PENDING → NOW 전이 시 참여자 권한 확인)
+    const isParticipant = task.participants?.some((p) => p.userId === userId);
+    const isAssignee = task.assigneeId === userId;
+
+    // PENDING → NOW 전이는 담당자 또는 참여자만 가능
+    if (task.status === "PENDING" && status === "NOW") {
+      if (!isAssignee && !isParticipant) {
+        return res.status(403).json({
+          error:
+            "권한이 없습니다. 담당자 또는 참여자만 업무를 시작할 수 있습니다.",
+        });
+      }
     }
 
     // 2. 상태 전이 검증 (담당자 정보 포함)
@@ -251,6 +423,14 @@ router.put("/:id/status", async (req, res) => {
           error: "종료 권한이 없습니다.",
         });
       }
+    } else if (status === "CANCELLED") {
+      // CANCELLED는 팀장 이상만 가능
+      if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+        return res.status(403).json({
+          error:
+            "취소 권한이 없습니다. 팀장급 이상만 업무를 취소할 수 있습니다.",
+        });
+      }
     }
 
     // 4. 상태 변경 (트랜잭션)
@@ -281,7 +461,33 @@ router.put("/:id/status", async (req, res) => {
         },
       });
 
-      // 4-4. 상태 이력 저장 (TaskStatusHistory)
+      // 4-4. PENDING → NOW 전이 시 참여자의 startedAt 업데이트
+      if (task.status === "PENDING" && status === "NOW") {
+        // 현재 사용자가 참여자인지 확인 (이미 조회한 task.participants 사용)
+        const participant = task.participants?.find((p) => p.userId === userId);
+
+        if (participant) {
+          try {
+            // 참여자의 업무 시작 시간 기록 (이미 시작하지 않은 경우만)
+            const existingParticipant = await tx.taskParticipant.findUnique({
+              where: { id: participant.id },
+              select: { startedAt: true },
+            });
+
+            if (existingParticipant && !existingParticipant.startedAt) {
+              await tx.taskParticipant.update({
+                where: { id: participant.id },
+                data: { startedAt: new Date() },
+              });
+            }
+          } catch (participantError) {
+            // 참여자 업데이트 실패해도 상태 변경은 계속 진행
+            console.error("참여자 startedAt 업데이트 오류:", participantError);
+          }
+        }
+      }
+
+      // 4-5. 상태 이력 저장 (TaskStatusHistory)
       await tx.taskStatusHistory.create({
         data: {
           taskId: id,
@@ -291,13 +497,35 @@ router.put("/:id/status", async (req, res) => {
         },
       });
 
-      return updatedTask;
+      // 4-6. 업데이트된 참여자 정보를 포함하여 반환
+      const finalTask = await tx.task.findUnique({
+        where: { id },
+        include: {
+          assignee: { select: { id: true, name: true, email: true } },
+          assigner: { select: { id: true, name: true, email: true } },
+          team: { select: { id: true, teamName: true } },
+          participants: {
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+            },
+          },
+        },
+      });
+
+      return finalTask;
     });
 
     // 5. 성공 응답
     res.json(result);
   } catch (error) {
     console.error("상태 변경 오류:", error);
+    console.error("오류 상세:", {
+      message: error.message,
+      stack: error.stack,
+      taskId: req.params.id,
+      status: req.body.status,
+      userId: req.user?.userId,
+    });
     res.status(500).json({
       error: "서버 오류",
       details:
@@ -307,6 +535,54 @@ router.put("/:id/status", async (req, res) => {
 });
 
 router.put("/:id/status", async (req, res) => {});
+
+// 참여자 업무 시작 상태 업데이트
+router.put("/:id/participants/:participantId/start", async (req, res) => {
+  try {
+    const { id, participantId } = req.params;
+    const { userId } = req.user;
+    const { started } = req.body; // true: 시작, false: 중지
+
+    // 업무 조회
+    const task = await prisma.task.findUnique({
+      where: { id },
+      include: {
+        participants: true,
+      },
+    });
+
+    if (!task) {
+      return res.status(404).json({ error: "업무를 찾을 수 없습니다." });
+    }
+
+    // 참여자 확인
+    const participant = task.participants.find(
+      (p) => p.id === participantId && p.userId === userId
+    );
+
+    if (!participant) {
+      return res.status(403).json({
+        error: "권한이 없습니다. 본인이 참여한 업무만 시작할 수 있습니다.",
+      });
+    }
+
+    // 업무 시작 상태 업데이트
+    const updatedParticipant = await prisma.taskParticipant.update({
+      where: { id: participantId },
+      data: { startedAt: started ? new Date() : null },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
+
+    res.json(updatedParticipant);
+  } catch (error) {
+    console.error("참여자 업무 시작 상태 업데이트 오류:", error);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
 
 // 참여자 노트 저장/수정
 router.put("/:id/participants/:participantId/note", async (req, res) => {

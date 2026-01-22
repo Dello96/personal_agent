@@ -21,6 +21,7 @@ const getMenuIcon = (menu: string): string => {
   if (menu === "대시보드") return "🏠";
   if (menu === "업무 상세") return "📄";
   if (menu === "완료된 업무") return "✅";
+  if (menu === "팀 관리") return "⚙️";
   return "";
 };
 
@@ -58,6 +59,8 @@ export default function Sidebar({
         router.push("/calendar");
       } else if (menu === "채팅") {
         router.push("/chat");
+      } else if (menu === "팀 관리") {
+        router.push("/manager/team");
       }
     }
   };

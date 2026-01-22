@@ -8,6 +8,7 @@ import { getTeamMembers, TeamMember } from "@/lib/api/users";
 import Image from "next/image";
 import AppLayout from "@/app/components/shared/AppLayout";
 import { getRoleLabel } from "@/lib/utils/roleUtils";
+import GithubActivityWidget from "@/app/components/features/github/GithubActivityWidget";
 
 function HomeContent() {
   const leftMenus = ["진행중인 업무", "일정", "채팅"];
@@ -660,6 +661,9 @@ function HomeContent() {
               </ul>
             )}
           </div>
+
+          {/* GitHub 활동 위젯 */}
+          <GithubActivityWidget />
         </div>
       </div>
 

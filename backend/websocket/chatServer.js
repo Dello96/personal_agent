@@ -405,6 +405,24 @@ class ChatWebSocketServer {
       });
     }
   }
+
+  // 특정 팀의 모든 사용자에게 메시지 전송 (외부에서 호출 가능)
+  async broadcastToTeam(teamName, message) {
+    try {
+      // 팀의 모든 멤버 조회
+      const teamMembers = await prisma.user.findMany({
+        where: { teamName },
+        select: { id: true },
+      });
+
+      // 각 멤버에게 메시지 전송
+      teamMembers.forEach((member) => {
+        this.broadcastToUser(member.id, message);
+      });
+    } catch (error) {
+      console.error("팀 브로드캐스트 오류:", error);
+    }
+  }
 }
 
 module.exports = ChatWebSocketServer;
