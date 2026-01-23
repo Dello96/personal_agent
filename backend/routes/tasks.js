@@ -102,17 +102,15 @@ const isValidStatusTransition = (
   };
 
   // 권한 확인: REVIEW, ENDING 상태 변경은 팀장 이상만 가능
-  // 단, 담당자가 자신의 업무를 REVIEW로 변경하는 경우는 허용
+  // 단, 담당자 또는 참여자가 자신의 업무를 REVIEW로 변경하는 경우는 허용
+  // 하지만 팀장급 이상은 검토 요청 불가 (참여자만 검토 요청 가능)
   if (newStatus === "REVIEW") {
-    // 담당자가 자신의 업무를 REVIEW로 변경하는 경우 → 권한 체크 건너뛰고 상태 전이 검증으로 진행
-    if (taskAssigneeId && userId && taskAssigneeId === userId) {
-      // 권한 체크를 건너뛰고 바로 상태 전이 검증으로 넘어감 (아무것도 return하지 않음)
-    } else {
-      // 담당자가 아닌 경우, 팀장 이상 권한 필요
-      if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(userRole)) {
-        return false;
-      }
+    // 팀장급 이상은 검토 요청 불가
+    if (["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(userRole)) {
+      return false;
     }
+    // 담당자 또는 참여자는 허용 (실제 참여자 확인은 API 엔드포인트에서 수행)
+    // 여기서는 상태 전이 검증으로 진행
   } else if (newStatus === "ENDING") {
     // ENDING은 항상 팀장 이상만 가능 (담당자 예외 없음)
     if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(userRole)) {
@@ -405,16 +403,28 @@ router.put("/:id/status", async (req, res) => {
     }
 
     // 3. 권한 확인 (추가 검증)
-    // 담당자가 자신의 업무를 REVIEW로 변경하는 경우는 허용
+    // 담당자 또는 참여자가 자신의 업무를 REVIEW로 변경하는 경우는 허용
     if (status === "REVIEW") {
-      // 담당자가 자신의 업무를 REVIEW로 변경하는 경우 → 허용
-      if (task.assigneeId && userId && task.assigneeId !== userId) {
-        // 담당자가 아닌 경우, 팀장 이상 권한 필요
+      // 담당자 또는 참여자가 자신의 업무를 REVIEW로 변경하는 경우 → 허용
+      const isAssignee =
+        task.assigneeId && userId && task.assigneeId === userId;
+      const isParticipant = task.participants?.some((p) => p.userId === userId);
+
+      if (!isAssignee && !isParticipant) {
+        // 담당자도 참여자도 아닌 경우, 팀장 이상 권한 필요
         if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
           return res.status(403).json({
-            error: "리뷰 권한이 없습니다.",
+            error:
+              "검토 요청 권한이 없습니다. 담당자 또는 참여자만 검토를 요청할 수 있습니다.",
           });
         }
+      }
+
+      // 팀장급 이상은 검토 요청 불가 (참여자만 검토 요청 가능)
+      if (["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+        return res.status(403).json({
+          error: "팀장급 이상은 검토 요청을 할 수 없습니다.",
+        });
       }
     } else if (status === "ENDING") {
       // ENDING은 항상 팀장 이상만 가능
