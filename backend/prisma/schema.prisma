@@ -62,6 +62,7 @@ model Task {
   participants TaskParticipant[]
   statusHistory      TaskStatusHistory[]
   referenceImageUrls String[]            @default([])
+  referenceLinks     String[]            @default([]) // 참고 링크 (GitHub, YouTube, 기타)
   githubRepository   TaskGitHubRepository?
 }
 

@@ -9,6 +9,7 @@ import {
   updateParticipantNote,
   getParticipantNotes,
   updateParticipantStartStatus,
+  updateTaskLinks,
   ParticipantNote,
 } from "@/lib/api/tasks";
 import { useEffect, useState } from "react";
@@ -37,6 +38,9 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteContent, setNoteContent] = useState<{ [key: string]: string }>({});
   const [isSavingNote, setIsSavingNote] = useState(false);
+  const [isEditingLinks, setIsEditingLinks] = useState(false);
+  const [linkInputs, setLinkInputs] = useState<string[]>([]);
+  const [isSavingLinks, setIsSavingLinks] = useState(false);
 
   const formatDate = (dateString: string | null | undefined): string => {
     if (!dateString) return "";
@@ -52,6 +56,8 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
         console.log("참여자 데이터:", data?.participants);
         setTask(data);
         setError(null);
+        // 링크 입력 필드 초기화
+        setLinkInputs(data.referenceLinks || []);
       } catch (err) {
         console.error("업무 조회 실패:", err);
         setError("업무를 불러오는데 실패했습니다.");
@@ -101,63 +107,38 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
     }
   };
 
-  // OFF/ON 토글 핸들러 (PENDING → NOW만 처리, 팀장급 이상은 NOW 상태에서 상태 변경 안 함)
+  // ON 버튼 핸들러 (팀장급 이상은 NOW 상태에서 상태 변경 안 함)
   const handleToggleStatus = async () => {
+    if (!task || !user) return;
+
+    // 팀장급 이상은 NOW 상태에서 ON 버튼을 눌러도 상태 변경 안 함
+    const isTeamLeadOrAbove = ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(
+      user.role || ""
+    );
+    if (isTeamLeadOrAbove && task.status === "NOW") {
+      // 상태 변경 없이 그냥 반환
+      return;
+    }
+  };
+
+  // 참여자별 업무 시작 핸들러 (note 작성 후 시작 버튼 클릭 시)
+  const handleParticipantStart = async (participantId: string) => {
     if (!task || !user) return;
 
     try {
       setIsUpdatingStatus(true);
 
-      // 현재 사용자가 참여자인지 확인
-      const isParticipant = task.participants?.some(
-        (p) => p.userId === user.id
-      );
-      const isAssignee = task.assigneeId === user.id;
+      // 참여자 시작 상태 업데이트
+      await updateParticipantStartStatus(task.id, participantId, true);
 
-      if (!isParticipant && !isAssignee) {
-        alert("참여자만 업무를 시작할 수 있습니다.");
-        return;
-      }
+      // 업무 정보 새로고침
+      const refreshedTask = await getTask(taskId);
+      setTask(refreshedTask);
 
-      // PENDING → NOW만 처리 (팀장급 이상도 NOW 상태에서는 상태 변경 안 함)
-      if (task.status === "PENDING") {
-        const newStatus = "NOW";
-        const shouldUpdateParticipantStart = true;
-
-        // API 호출
-        const updatedTask = await updateTaskStatus(task.id, newStatus);
-        setTask(updatedTask);
-
-        // 참여자 시작 상태 업데이트
-        if (shouldUpdateParticipantStart && isParticipant) {
-          const participant = task.participants?.find(
-            (p) => p.userId === user.id
-          );
-          if (participant && !participant.startedAt) {
-            try {
-              await updateParticipantStartStatus(task.id, participant.id, true);
-              // 업무 정보 새로고침
-              const refreshedTask = await getTask(taskId);
-              setTask(refreshedTask);
-            } catch (error) {
-              console.error("참여자 시작 상태 업데이트 실패:", error);
-              // 실패해도 계속 진행
-            }
-          }
-        }
-      } else if (task.status === "NOW") {
-        // 팀장급 이상은 NOW 상태에서 ON 버튼을 눌러도 상태 변경 안 함
-        const isTeamLeadOrAbove = ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(
-          user.role || ""
-        );
-        if (isTeamLeadOrAbove) {
-          // 상태 변경 없이 그냥 반환
-          return;
-        }
-      }
+      alert("업무를 시작했습니다.");
     } catch (error: any) {
-      console.error("상태 변경 실패:", error);
-      alert(error.message || "상태 변경에 실패했습니다.");
+      console.error("업무 시작 실패:", error);
+      alert(error.message || "업무 시작에 실패했습니다.");
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -391,19 +372,6 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
             ].includes(user?.role || "");
             const canToggle = isParticipant || isAssignee;
 
-            // PENDING 상태: 참여자/팀장 모두 ON 버튼
-            if (task?.status === "PENDING" && canToggle) {
-              return (
-                <button
-                  onClick={handleToggleStatus}
-                  disabled={isUpdatingStatus}
-                  className="px-6 py-2 bg-gray-200 text-gray-700 rounded-full font-medium hover:bg-gray-300 transition-all disabled:opacity-50"
-                >
-                  OFF
-                </button>
-              );
-            }
-
             // NOW 상태: 팀장급 이상은 ON, 취소 버튼 / 참여자는 ON, 검토요청 버튼
             if (task?.status === "NOW") {
               return (
@@ -559,23 +527,37 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
                         </div>
                       </div>
                       {isCurrentUser && (
-                        <button
-                          onClick={() => {
-                            if (isEditing) {
-                              setEditingNoteId(null);
-                            } else {
-                              setEditingNoteId(participant.id);
-                              setNoteContent({
-                                ...noteContent,
-                                [participant.id]:
-                                  participant.note || currentNote || "",
-                              });
-                            }
-                          }}
-                          className="px-4 py-2 text-sm bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] transition-colors"
-                        >
-                          {isEditing ? "취소" : "작성/수정"}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {/* 시작 버튼 (note가 있고 startedAt이 없을 때만 표시) */}
+                          {participant.note && !participant.startedAt && (
+                            <button
+                              onClick={() =>
+                                handleParticipantStart(participant.id)
+                              }
+                              disabled={isUpdatingStatus}
+                              className="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              시작
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              if (isEditing) {
+                                setEditingNoteId(null);
+                              } else {
+                                setEditingNoteId(participant.id);
+                                setNoteContent({
+                                  ...noteContent,
+                                  [participant.id]:
+                                    participant.note || currentNote || "",
+                                });
+                              }
+                            }}
+                            className="px-4 py-2 text-sm bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] transition-colors"
+                          >
+                            {isEditing ? "취소" : "작성/수정"}
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -749,6 +731,175 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
           {task?.isDevelopmentTask && task?.githubRepository && (
             <TaskGithubActivityWidget taskId={task.id} />
           )}
+
+          {/* 참고 링크 섹션 */}
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-200/30">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <span>🔗</span>
+                참고 링크
+              </h3>
+              {(() => {
+                const isParticipant = task?.participants?.some(
+                  (p) => p.userId === user?.id
+                );
+                const isAssignee = task?.assigneeId === user?.id;
+                const isTeamLeadOrAbove = [
+                  "TEAM_LEAD",
+                  "MANAGER",
+                  "DIRECTOR",
+                ].includes(user?.role || "");
+                const canEdit =
+                  isParticipant || isAssignee || isTeamLeadOrAbove;
+
+                if (!canEdit) return null;
+
+                return (
+                  <button
+                    onClick={() => {
+                      if (isEditingLinks) {
+                        setIsEditingLinks(false);
+                        setLinkInputs(task?.referenceLinks || []);
+                      } else {
+                        setIsEditingLinks(true);
+                        setLinkInputs(task?.referenceLinks || []);
+                      }
+                    }}
+                    className="text-sm text-[#7F55B1] hover:text-[#6B479A] font-medium hover:underline"
+                  >
+                    {isEditingLinks ? "취소" : "편집"}
+                  </button>
+                );
+              })()}
+            </div>
+
+            {isEditingLinks ? (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  {linkInputs.map((link, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        type="url"
+                        value={link}
+                        onChange={(e) => {
+                          const newLinks = [...linkInputs];
+                          newLinks[index] = e.target.value;
+                          setLinkInputs(newLinks);
+                        }}
+                        placeholder="https://..."
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7F55B1]"
+                      />
+                      <button
+                        onClick={() => {
+                          const newLinks = linkInputs.filter(
+                            (_, i) => i !== index
+                          );
+                          setLinkInputs(newLinks);
+                        }}
+                        className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm"
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setLinkInputs([...linkInputs, ""]);
+                    }}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+                  >
+                    + 링크 추가
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        setIsSavingLinks(true);
+                        const validLinks = linkInputs.filter(
+                          (link: string) => link.trim() !== ""
+                        );
+                        const updatedTask = await updateTaskLinks(
+                          taskId,
+                          validLinks
+                        );
+                        setTask(updatedTask);
+                        setIsEditingLinks(false);
+                        alert("링크가 저장되었습니다.");
+                      } catch (error: any) {
+                        console.error("링크 저장 실패:", error);
+                        alert(error.message || "링크 저장에 실패했습니다.");
+                      } finally {
+                        setIsSavingLinks(false);
+                      }
+                    }}
+                    disabled={isSavingLinks}
+                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSavingLinks ? "저장 중..." : "저장"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {task?.referenceLinks && task.referenceLinks.length > 0 ? (
+                  task.referenceLinks.map((link, index) => {
+                    const getLinkIcon = (url: string) => {
+                      if (url.includes("github.com")) return "🐙";
+                      if (
+                        url.includes("youtube.com") ||
+                        url.includes("youtu.be")
+                      )
+                        return "📺";
+                      return "🔗";
+                    };
+
+                    const getLinkLabel = (url: string) => {
+                      try {
+                        const urlObj = new URL(url);
+                        if (url.includes("github.com")) {
+                          const pathParts = urlObj.pathname
+                            .split("/")
+                            .filter(Boolean);
+                          if (pathParts.length >= 2) {
+                            return `${pathParts[0]}/${pathParts[1]}`;
+                          }
+                        }
+                        return urlObj.hostname.replace("www.", "");
+                      } catch {
+                        return url;
+                      }
+                    };
+
+                    return (
+                      <a
+                        key={index}
+                        href={link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 p-3 bg-white rounded-lg hover:bg-blue-50 transition-colors border border-blue-100"
+                      >
+                        <span className="text-2xl">{getLinkIcon(link)}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">
+                            {getLinkLabel(link)}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {link}
+                          </p>
+                        </div>
+                        <span className="text-gray-400">↗</span>
+                      </a>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-6 text-gray-400 text-sm">
+                    등록된 링크가 없습니다.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* 3개 카드 영역 */}
           <div className="grid grid-cols-3 gap-4">

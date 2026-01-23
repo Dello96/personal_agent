@@ -62,6 +62,7 @@ export interface Task {
   };
   participants?: TaskParticipant[];
   referenceImageUrls?: string[];
+  referenceLinks?: string[]; // 참고 링크
   isDevelopmentTask?: boolean;
   githubRepository?: {
     id: string;
@@ -141,5 +142,16 @@ export const updateParticipantStartStatus = async (
   return apiRequest(`/api/tasks/${taskId}/participants/${participantId}/start`, {
     method: "PUT",
     body: JSON.stringify({ started }),
+  });
+};
+
+// 참고 링크 업데이트
+export const updateTaskLinks = async (
+  taskId: string,
+  links: string[]
+): Promise<Task> => {
+  return apiRequest(`/api/tasks/${taskId}/links`, {
+    method: "PUT",
+    body: JSON.stringify({ links }),
   });
 };

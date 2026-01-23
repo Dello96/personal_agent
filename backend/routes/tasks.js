@@ -90,9 +90,8 @@ const isValidStatusTransition = (
   taskAssigneeId,
   userId
 ) => {
-  // 허용된 상태 전이 정의
+  // 허용된 상태 전이 정의 (PENDING 제거 - 업무는 생성 시 바로 NOW로 시작)
   const validTransitions = {
-    PENDING: ["NOW", "CANCELLED"],
     NOW: ["COMPLETED", "REVIEW", "CANCELLED"],
     IN_PROGRESS: ["NOW", "COMPLETED", "CANCELLED"],
     COMPLETED: ["REVIEW", "ENDING", "CANCELLED"],
@@ -240,7 +239,7 @@ router.post("/", async (req, res) => {
 
     // 트랜잭션으로 업무 + 참여자 함께 생성
     const result = await prisma.$transaction(async (tx) => {
-      // 1. 업무 생성
+      // 1. 업무 생성 (생성 시 바로 NOW 상태로 시작)
       const task = await tx.task.create({
         data: {
           title,
@@ -250,7 +249,7 @@ router.post("/", async (req, res) => {
           teamId: teamName,
           priority: priority || "MEDIUM",
           dueDate: dueDate ? new Date(dueDate) : null,
-          status: "PENDING",
+          status: "NOW", // 업무 생성 시 바로 시작
           referenceImageUrls: referenceImageUrls || [],
           isDevelopmentTask: isDevelopmentTask || false,
         },
@@ -374,16 +373,6 @@ router.put("/:id/status", async (req, res) => {
     // 1-1. 참여자 확인 (PENDING → NOW 전이 시 참여자 권한 확인)
     const isParticipant = task.participants?.some((p) => p.userId === userId);
     const isAssignee = task.assigneeId === userId;
-
-    // PENDING → NOW 전이는 담당자 또는 참여자만 가능
-    if (task.status === "PENDING" && status === "NOW") {
-      if (!isAssignee && !isParticipant) {
-        return res.status(403).json({
-          error:
-            "권한이 없습니다. 담당자 또는 참여자만 업무를 시작할 수 있습니다.",
-        });
-      }
-    }
 
     // 2. 상태 전이 검증 (담당자 정보 포함)
     if (
@@ -693,6 +682,109 @@ router.get("/:id/participants/notes", async (req, res) => {
   } catch (error) {
     console.error("참여자 노트 조회 오류:", error);
     res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+// 참고 링크 업데이트
+router.put("/:id/links", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { links } = req.body; // links: string[]
+    const { userId, role } = req.user;
+
+    // 업무 조회
+    const task = await prisma.task.findUnique({
+      where: { id },
+      include: {
+        assignee: true,
+        assigner: true,
+        participants: {
+          select: {
+            id: true,
+            userId: true,
+          },
+        },
+      },
+    });
+
+    if (!task) {
+      return res.status(404).json({ error: "업무를 찾을 수 없습니다." });
+    }
+
+    // 권한 확인: 담당자, 참여자, 또는 팀장 이상만 링크 수정 가능
+    const isParticipant = task.participants?.some((p) => p.userId === userId);
+    const isAssignee = task.assigneeId === userId;
+    const isTeamLeadOrAbove = ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(
+      role
+    );
+
+    if (!isAssignee && !isParticipant && !isTeamLeadOrAbove) {
+      return res.status(403).json({
+        error:
+          "권한이 없습니다. 담당자, 참여자 또는 팀장급 이상만 링크를 수정할 수 있습니다.",
+      });
+    }
+
+    // 링크 유효성 검사
+    if (!Array.isArray(links)) {
+      return res.status(400).json({ error: "links는 배열이어야 합니다." });
+    }
+
+    // 각 링크가 유효한 URL인지 확인
+    const urlPattern = /^https?:\/\/.+/;
+    for (const link of links) {
+      if (typeof link !== "string" || !urlPattern.test(link)) {
+        return res.status(400).json({
+          error: `유효하지 않은 링크 형식입니다: ${link}`,
+        });
+      }
+    }
+
+    // 링크 업데이트
+    const updatedTask = await prisma.task.update({
+      where: { id },
+      data: {
+        referenceLinks: links,
+      },
+      include: {
+        assignee: { select: { id: true, name: true, email: true } },
+        assigner: { select: { id: true, name: true, email: true } },
+        participants: {
+          select: {
+            id: true,
+            userId: true,
+            role: true,
+            note: true,
+            updatedAt: true,
+            startedAt: true,
+            user: { select: { id: true, name: true, email: true } },
+          },
+        },
+        githubRepository: {
+          select: {
+            id: true,
+            owner: true,
+            repo: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    res.json(updatedTask);
+  } catch (error) {
+    console.error("링크 업데이트 오류:", error);
+    console.error("에러 상세:", {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      name: error.name,
+    });
+    res.status(500).json({
+      error: "서버 오류",
+      details:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 });
 
