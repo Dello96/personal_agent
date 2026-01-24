@@ -8,6 +8,7 @@ import { getTeamMembers, TeamMember } from "@/lib/api/users";
 import Image from "next/image";
 import AppLayout from "@/app/components/shared/AppLayout";
 import { getRoleLabel } from "@/lib/utils/roleUtils";
+import GithubActivityWidget from "@/app/components/features/github/GithubActivityWidget";
 
 function HomeContent() {
   const leftMenus = ["진행중인 업무", "일정", "채팅"];
@@ -48,9 +49,9 @@ function HomeContent() {
   // 사이드바 메뉴 선택 상태
   const [activeMenu, setActiveMenu] = useState("진행중인 업무");
 
-  // 업무 상태 탭
+  // 업무 상태 탭 (PENDING 제거 - 업무는 생성 시 바로 NOW로 시작)
   const [activeTab, setActiveTab] = useState<
-    "PENDING" | "NOW" | "REVIEW" | "COMPLETED"
+    "NOW" | "REVIEW" | "COMPLETED"
   >("NOW");
 
   const goToTeamJoin = () => {
@@ -207,16 +208,14 @@ function HomeContent() {
     router.push("/manager/tasks");
   };
 
-  // 상태별 업무 필터링
+  // 상태별 업무 필터링 (PENDING 제거)
   const filteredTasks = tasks.filter((task) => {
     if (activeMenu === "진행중인 업무") return task.status === "IN_PROGRESS";
     if (activeMenu === "완료된 업무") return task.status === "COMPLETED";
-    if (activeMenu === "요청사항") return task.status === "PENDING";
     return true;
   });
 
-  // 탭별 업무 필터링
-  const pendingTasks = tasks.filter((t) => t.status === "PENDING"); // 진행전
+  // 탭별 업무 필터링 (PENDING 제거)
   const nowTasks = tasks.filter((t) => t.status === "NOW"); // 진행중
   const completedTasks = tasks.filter((t) => t.status === "COMPLETED"); // 완료
   const reviewTasks = tasks.filter((t) => t.status === "REVIEW"); //리뷰
@@ -224,11 +223,9 @@ function HomeContent() {
   const displayTasks =
     activeTab === "NOW"
       ? nowTasks
-      : activeTab === "PENDING"
-        ? pendingTasks
-        : activeTab === "REVIEW"
-          ? reviewTasks
-          : completedTasks;
+      : activeTab === "REVIEW"
+        ? reviewTasks
+        : completedTasks;
 
   // 로그인 안 된 경우
   if (!hasHydrated) {
@@ -372,7 +369,7 @@ function HomeContent() {
                   Today&apos;s Tasks
                 </h2>
                 <div className="flex items-end gap-2">
-                  <span className="text-5xl font-bold">{`${pendingTasks.length + nowTasks.length}`}</span>
+                  <span className="text-5xl font-bold">{`${nowTasks.length}`}</span>
                   <span className="text-xl mb-1">건</span>
                 </div>
               </div>
@@ -393,25 +390,7 @@ function HomeContent() {
           <div className="bg-white rounded-3xl shadow-sm overflow-hidden">
             {/* 탭 헤더 */}
             <div className="flex border-b border-gray-100">
-              {/* 1. 진행전 탭 */}
-              <button
-                onClick={() => setActiveTab("PENDING")}
-                className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
-                  activeTab === "PENDING"
-                    ? "text-[#7F55B1] border-b-2 border-[#7F55B1] bg-purple-50"
-                    : "text-gray-400 hover:text-gray-600"
-                }`}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <span>📋</span>
-                  <span>진행전</span>
-                  <span className="px-2 py-0.5 bg-gray-500 text-white text-xs rounded-full">
-                    {pendingTasks.length}
-                  </span>
-                </div>
-              </button>
-
-              {/* 2. 진행중 탭 */}
+              {/* 1. 진행중 탭 */}
               <button
                 onClick={() => setActiveTab("NOW")}
                 className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
@@ -429,7 +408,7 @@ function HomeContent() {
                 </div>
               </button>
 
-              {/* 리뷰중 탭 */}
+              {/* 2. 리뷰중 탭 */}
               <button
                 onClick={() => setActiveTab("REVIEW")}
                 className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
@@ -578,15 +557,6 @@ function HomeContent() {
           <div className="bg-white rounded-3xl p-6 shadow-sm">
             <h3 className="font-semibold text-gray-800 mb-4">업무 현황</h3>
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-100 rounded-xl">
-                <div className="flex items-center gap-2">
-                  <span>📋</span>
-                  <span className="text-sm text-gray-600">진행전</span>
-                </div>
-                <span className="font-bold text-yellow-600">
-                  {pendingTasks.length}건
-                </span>
-              </div>
               <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
                 <div className="flex items-center gap-2">
                   <span>🔄</span>
@@ -660,6 +630,9 @@ function HomeContent() {
               </ul>
             )}
           </div>
+
+          {/* GitHub 활동 위젯 */}
+          <GithubActivityWidget />
         </div>
       </div>
 

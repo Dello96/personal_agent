@@ -40,11 +40,13 @@ const tasksRoutes = require("./routes/tasks");
 const teamRoutes = require("./routes/team");
 const usersRoutes = require("./routes/users");
 const authRoutes = require("./routes/auth");
+const githubRoutes = require("./routes/github");
 
 app.use("/api/tasks", tasksRoutes);
 app.use("/api/team", teamRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/github", githubRoutes);
 
 const uploadRoutes = require("./routes/upload");
 app.use("/api/upload", uploadRoutes);

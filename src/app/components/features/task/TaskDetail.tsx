@@ -8,10 +8,13 @@ import {
   updateTaskStatus,
   updateParticipantNote,
   getParticipantNotes,
+  updateParticipantStartStatus,
+  updateTaskLinks,
   ParticipantNote,
 } from "@/lib/api/tasks";
 import { useEffect, useState } from "react";
 import { Task } from "@/lib/api/tasks";
+import TaskGithubActivityWidget from "@/app/components/features/github/TaskGithubActivityWidget";
 
 interface TaskDetailProps {
   taskId: string;
@@ -35,6 +38,9 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteContent, setNoteContent] = useState<{ [key: string]: string }>({});
   const [isSavingNote, setIsSavingNote] = useState(false);
+  const [isEditingLinks, setIsEditingLinks] = useState(false);
+  const [linkInputs, setLinkInputs] = useState<string[]>([]);
+  const [isSavingLinks, setIsSavingLinks] = useState(false);
 
   const formatDate = (dateString: string | null | undefined): string => {
     if (!dateString) return "";
@@ -46,8 +52,12 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
       try {
         setLoading(true);
         const data = await getTask(taskId);
+        console.log("업무 데이터:", data);
+        console.log("참여자 데이터:", data?.participants);
         setTask(data);
         setError(null);
+        // 링크 입력 필드 초기화
+        setLinkInputs(data.referenceLinks || []);
       } catch (err) {
         console.error("업무 조회 실패:", err);
         setError("업무를 불러오는데 실패했습니다.");
@@ -97,45 +107,104 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
     }
   };
 
-  // OFF/ON 토글 핸들러
+  // ON 버튼 핸들러 (팀장급 이상은 NOW 상태에서 상태 변경 안 함)
   const handleToggleStatus = async () => {
-    if (!task) return;
+    if (!task || !user) return;
+
+    // 팀장급 이상은 NOW 상태에서 ON 버튼을 눌러도 상태 변경 안 함
+    const isTeamLeadOrAbove = ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(
+      user.role || ""
+    );
+    if (isTeamLeadOrAbove && task.status === "NOW") {
+      // 상태 변경 없이 그냥 반환
+      return;
+    }
+  };
+
+  // 참여자별 업무 시작 핸들러 (note 작성 후 시작 버튼 클릭 시)
+  const handleParticipantStart = async (participantId: string) => {
+    if (!task || !user) return;
 
     try {
       setIsUpdatingStatus(true);
 
-      let newStatus: string;
+      // 참여자 시작 상태 업데이트
+      await updateParticipantStartStatus(task.id, participantId, true);
 
-      // 현재 상태에 따라 다음 상태 결정
-      if (task.status === "PENDING") {
-        // OFF → ON: PENDING → NOW
-        newStatus = "NOW";
-      } else if (task.status === "NOW") {
-        // ON → COMPLETED: NOW → COMPLETED
-        newStatus = "REVIEW";
-      } else {
-        // 이미 완료된 상태
-        return;
-      }
+      // 업무 정보 새로고침
+      const refreshedTask = await getTask(taskId);
+      setTask(refreshedTask);
 
-      // API 호출
-      const updatedTask = await updateTaskStatus(task.id, newStatus);
-      setTask(updatedTask);
-    } catch (error) {
-      console.error("상태 변경 실패:", error);
-      alert("상태 변경에 실패했습니다.");
+      alert("업무를 시작했습니다.");
+    } catch (error: any) {
+      console.error("업무 시작 실패:", error);
+      alert(error.message || "업무 시작에 실패했습니다.");
     } finally {
       setIsUpdatingStatus(false);
     }
   };
 
-  // 리뷰 승인 핸들러 (ENDING으로 변경)
+  // 검토요청 핸들러 (참여자만 사용 가능, NOW → REVIEW)
+  const handleRequestReview = async () => {
+    if (!task || !user) return;
+
+    try {
+      setIsUpdatingStatus(true);
+
+      // 참여자만 검토 요청 가능
+      const isParticipant = task.participants?.some(
+        (p) => p.userId === user.id
+      );
+      const isAssignee = task.assigneeId === user.id;
+
+      if (!isParticipant && !isAssignee) {
+        alert("참여자만 검토를 요청할 수 있습니다.");
+        return;
+      }
+
+      // 팀장급 이상은 검토 요청 불가
+      const isTeamLeadOrAbove = ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(
+        user.role || ""
+      );
+      if (isTeamLeadOrAbove) {
+        alert("팀장급 이상은 검토 요청을 할 수 없습니다.");
+        return;
+      }
+
+      // NOW → REVIEW 전이
+      if (task.status !== "NOW") {
+        alert("진행중인 업무만 검토를 요청할 수 있습니다.");
+        return;
+      }
+
+      const updatedTask = await updateTaskStatus(task.id, "REVIEW");
+      setTask(updatedTask);
+      alert("검토가 요청되었습니다.");
+    } catch (error: any) {
+      console.error("검토 요청 실패:", error);
+      alert(error.message || "검토 요청에 실패했습니다.");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  // 검토완료 핸들러 (REVIEW → ENDING)
   const handleReviewApprove = async () => {
     if (!task) return;
 
     // 권한 확인
     if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "")) {
-      alert("리뷰 권한이 없습니다.");
+      alert("검토 권한이 없습니다.");
+      return;
+    }
+
+    // REVIEW 상태에서만 검토완료 가능
+    if (task.status !== "REVIEW") {
+      alert("검토 중인 업무만 완료 처리할 수 있습니다.");
+      return;
+    }
+
+    if (!confirm("검토를 완료하고 업무를 종료하시겠습니까?")) {
       return;
     }
 
@@ -143,22 +212,28 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
       setIsUpdatingStatus(true);
       const updatedTask = await updateTaskStatus(task.id, "ENDING");
       setTask(updatedTask);
-      alert("리뷰를 승인했습니다, 업무를 종료처리 할까요?");
+      alert("검토를 완료하고 업무를 종료했습니다.");
     } catch (error) {
-      console.error("리뷰 승인 실패:", error);
-      alert("리뷰 승인에 실패했습니다.");
+      console.error("검토 완료 실패:", error);
+      alert("검토 완료에 실패했습니다.");
     } finally {
       setIsUpdatingStatus(false);
     }
   };
 
-  // 리뷰 반려 핸들러 (NOW로 변경 - 재작업)
+  // 검토 반려 핸들러 (REVIEW → NOW)
   const handleReviewReject = async () => {
     if (!task) return;
 
     // 권한 확인
     if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "")) {
-      alert("리뷰 권한이 없습니다.");
+      alert("검토 권한이 없습니다.");
+      return;
+    }
+
+    // REVIEW 상태에서만 반려 가능
+    if (task.status !== "REVIEW") {
+      alert("검토 중인 업무만 반려할 수 있습니다.");
       return;
     }
 
@@ -169,10 +244,10 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
       setIsUpdatingStatus(true);
       const updatedTask = await updateTaskStatus(task.id, "NOW", comment);
       setTask(updatedTask);
-      alert("리뷰가 반려되어 재작업 상태로 변경되었습니다.");
+      alert("검토가 반려되어 재작업 상태로 변경되었습니다.");
     } catch (error) {
-      console.error("리뷰 반려 실패:", error);
-      alert("리뷰 반려에 실패했습니다.");
+      console.error("검토 반려 실패:", error);
+      alert("검토 반려에 실패했습니다.");
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -285,84 +360,113 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
         </div>
         {/* 상태 변경 버튼 영역 */}
         <div className="flex items-center gap-3 flex-wrap">
-          {/* 1. OFF/ON 토글 버튼 (담당자만, PENDING/NOW 상태일 때) - 먼저 표시 */}
-          {task?.assigneeId === user?.id &&
-            (task?.status === "PENDING" || task?.status === "NOW") && (
-              <button
-                onClick={handleToggleStatus}
-                disabled={isUpdatingStatus}
-                className={`px-6 py-2 rounded-full font-medium transition-all ${
-                  task.status === "PENDING"
-                    ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    : "bg-[#7F55B1] text-white hover:bg-[#6B479A]"
-                } disabled:opacity-50`}
-              >
-                {task.status === "PENDING" ? "OFF" : "ON"}
-              </button>
-            )}
+          {(() => {
+            const isParticipant = task?.participants?.some(
+              (p) => p.userId === user?.id
+            );
+            const isAssignee = task?.assigneeId === user?.id;
+            const isTeamLeadOrAbove = [
+              "TEAM_LEAD",
+              "MANAGER",
+              "DIRECTOR",
+            ].includes(user?.role || "");
+            const canToggle = isParticipant || isAssignee;
 
-          {/* 2. 취소 버튼 (CANCELLED, ENDING 상태가 아닐 때) - OFF/ON 버튼 다음에 표시 */}
-          {task?.status !== "CANCELLED" && task?.status !== "ENDING" && (
-            <button
-              onClick={handleCancel}
-              disabled={isUpdatingStatus}
-              className="px-6 py-2 bg-red-500 text-white rounded-full font-medium hover:bg-red-600 transition-all disabled:opacity-50"
-            >
-              취소
-            </button>
-          )}
+            // NOW 상태: 팀장급 이상은 ON, 취소 버튼 / 참여자는 ON, 검토요청 버튼
+            if (task?.status === "NOW") {
+              return (
+                <>
+                  {canToggle && (
+                    <button
+                      onClick={handleToggleStatus}
+                      disabled={isUpdatingStatus}
+                      className="px-6 py-2 bg-[#7F55B1] text-white rounded-full font-medium hover:bg-[#6B479A] transition-all disabled:opacity-50"
+                    >
+                      ON
+                    </button>
+                  )}
+                  {!isTeamLeadOrAbove && canToggle && (
+                    <button
+                      onClick={handleRequestReview}
+                      disabled={isUpdatingStatus}
+                      className="px-6 py-2 bg-blue-500 text-white rounded-full font-medium hover:bg-blue-600 transition-all disabled:opacity-50"
+                    >
+                      검토요청
+                    </button>
+                  )}
+                  {isTeamLeadOrAbove && (
+                    <button
+                      onClick={handleCancel}
+                      disabled={isUpdatingStatus}
+                      className="px-6 py-2 bg-red-500 text-white rounded-full font-medium hover:bg-red-600 transition-all disabled:opacity-50"
+                    >
+                      취소
+                    </button>
+                  )}
+                </>
+              );
+            }
 
-          {/* 3. 리뷰 버튼 영역 (팀장 이상, COMPLETED 상태일 때) */}
-          {["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "") &&
-            task?.status === "COMPLETED" && (
-              <div className="flex gap-2">
-                <button
-                  onClick={handleReviewApprove}
-                  disabled={isUpdatingStatus}
-                  className="px-6 py-2 bg-green-500 text-white rounded-full font-medium hover:bg-green-600 transition-all disabled:opacity-50"
-                >
-                  리뷰 승인
-                </button>
-                <button
-                  onClick={handleReviewReject}
-                  disabled={isUpdatingStatus}
-                  className="px-6 py-2 bg-orange-500 text-white rounded-full font-medium hover:bg-orange-600 transition-all disabled:opacity-50"
-                >
-                  리뷰 반려
-                </button>
-              </div>
-            )}
+            // REVIEW 상태: 팀장급 이상만 검토완료/반려 버튼
+            if (task?.status === "REVIEW" && isTeamLeadOrAbove) {
+              return (
+                <>
+                  <div className="px-4 py-2 bg-yellow-100 text-yellow-800 rounded-full font-medium">
+                    검토 중...
+                  </div>
+                  <button
+                    onClick={handleReviewApprove}
+                    disabled={isUpdatingStatus}
+                    className="px-6 py-2 bg-green-500 text-white rounded-full font-medium hover:bg-green-600 transition-all disabled:opacity-50"
+                  >
+                    검토완료
+                  </button>
+                  <button
+                    onClick={handleReviewReject}
+                    disabled={isUpdatingStatus}
+                    className="px-6 py-2 bg-orange-500 text-white rounded-full font-medium hover:bg-orange-600 transition-all disabled:opacity-50"
+                  >
+                    반려
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={isUpdatingStatus}
+                    className="px-6 py-2 bg-red-500 text-white rounded-full font-medium hover:bg-red-600 transition-all disabled:opacity-50"
+                  >
+                    취소
+                  </button>
+                </>
+              );
+            }
 
-          {/* 4. REVIEW 상태 표시 (검토 중) */}
-          {task?.status === "REVIEW" && (
-            <div className="px-4 py-2 bg-yellow-100 text-yellow-800 rounded-full font-medium">
-              검토 중...
-            </div>
-          )}
+            // REVIEW 상태: 참여자는 검토 중 표시만
+            if (task?.status === "REVIEW" && !isTeamLeadOrAbove) {
+              return (
+                <div className="px-4 py-2 bg-yellow-100 text-yellow-800 rounded-full font-medium">
+                  검토 중...
+                </div>
+              );
+            }
 
-          {/* 5. 종료 버튼 (COMPLETED 상태일 때, 팀장 이상만) */}
-          {task?.status === "COMPLETED" &&
-            ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "") && (
-              <button
-                onClick={handleEnd}
-                disabled={isUpdatingStatus}
-                className="px-6 py-2 bg-gray-700 text-white rounded-full font-medium hover:bg-gray-800 transition-all disabled:opacity-50"
-              >
-                종료
-              </button>
-            )}
+            // CANCELLED, ENDING 상태 표시
+            if (task?.status === "CANCELLED") {
+              return (
+                <div className="px-4 py-2 bg-red-100 text-red-800 rounded-full font-medium">
+                  취소됨
+                </div>
+              );
+            }
 
-          {/* 6. 최종 상태 표시 (CANCELLED, ENDING) */}
-          {task?.status === "CANCELLED" && (
-            <div className="px-4 py-2 bg-red-100 text-red-800 rounded-full font-medium">
-              취소됨
-            </div>
-          )}
-          {task?.status === "ENDING" && (
-            <div className="px-4 py-2 bg-gray-700 text-white rounded-full font-medium">
-              종료됨
-            </div>
-          )}
+            if (task?.status === "ENDING") {
+              return (
+                <div className="px-4 py-2 bg-gray-700 text-white rounded-full font-medium">
+                  종료됨
+                </div>
+              );
+            }
+
+            return null;
+          })()}
         </div>
       </div>
 
@@ -373,126 +477,164 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
             참여자별 업무 작성
           </h3>
           <div className="space-y-4">
-            {task?.participants?.map((participant) => {
-              const isCurrentUser = participant.userId === user?.id;
-              const currentNote = noteContent[participant.id] || "";
-              const isEditing = editingNoteId === participant.id;
+            {!task?.participants || task.participants.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                참여자가 없습니다.
+              </div>
+            ) : (
+              task.participants.map((participant) => {
+                if (!participant.user) {
+                  console.warn("참여자에 user 정보가 없습니다:", participant);
+                  return null;
+                }
+                const isCurrentUser = participant.userId === user?.id;
+                const currentNote = noteContent[participant.id] || "";
+                const isEditing = editingNoteId === participant.id;
 
-              return (
-                <div
-                  key={participant.id}
-                  className="bg-gray-50 rounded-2xl p-5 border-2 border-transparent hover:border-[#7F55B1]/20 transition-all"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-full flex items-center justify-center">
-                        <span className="text-white text-sm font-medium">
-                          {participant.user.name.charAt(0)}
-                        </span>
+                return (
+                  <div
+                    key={participant.id}
+                    className="bg-gray-50 rounded-2xl p-5 border-2 border-transparent hover:border-[#7F55B1]/20 transition-all"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-full flex items-center justify-center">
+                          <span className="text-white text-sm font-medium">
+                            {participant.user.name.charAt(0)}
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-gray-800 font-semibold">
+                              {participant.user.name}
+                            </p>
+                            {/* 업무 시작 여부 인디케이터 */}
+                            {participant.startedAt ? (
+                              <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                진행중
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-xs text-gray-400 font-medium">
+                                <span className="w-2 h-2 bg-gray-300 rounded-full"></span>
+                                대기중
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-gray-400 text-xs">
+                            {participant.user.email}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-gray-800 font-semibold">
-                          {participant.user.name}
-                        </p>
-                        <p className="text-gray-400 text-xs">
-                          {participant.user.email}
-                        </p>
-                      </div>
+                      {isCurrentUser && (
+                        <div className="flex items-center gap-2">
+                          {/* 시작 버튼 (note가 있고 startedAt이 없을 때만 표시) */}
+                          {participant.note && !participant.startedAt && (
+                            <button
+                              onClick={() =>
+                                handleParticipantStart(participant.id)
+                              }
+                              disabled={isUpdatingStatus}
+                              className="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              시작
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              if (isEditing) {
+                                setEditingNoteId(null);
+                              } else {
+                                setEditingNoteId(participant.id);
+                                setNoteContent({
+                                  ...noteContent,
+                                  [participant.id]:
+                                    participant.note || currentNote || "",
+                                });
+                              }
+                            }}
+                            className="px-4 py-2 text-sm bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] transition-colors"
+                          >
+                            {isEditing ? "취소" : "작성/수정"}
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    {isCurrentUser && (
-                      <button
-                        onClick={() => {
-                          if (isEditing) {
-                            setEditingNoteId(null);
-                          } else {
-                            setEditingNoteId(participant.id);
+
+                    {isEditing && isCurrentUser ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={currentNote}
+                          onChange={(e) => {
                             setNoteContent({
                               ...noteContent,
-                              [participant.id]:
-                                participant.note || currentNote || "",
+                              [participant.id]: e.target.value,
                             });
-                          }
-                        }}
-                        className="px-4 py-2 text-sm bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] transition-colors"
-                      >
-                        {isEditing ? "취소" : "작성/수정"}
-                      </button>
+                          }}
+                          placeholder="업무 내용을 작성해주세요..."
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7F55B1] resize-none"
+                          rows={5}
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                setIsSavingNote(true);
+                                await updateParticipantNote(
+                                  taskId,
+                                  participant.id,
+                                  currentNote
+                                );
+                                // 노트 목록 새로고침
+                                const notes = await getParticipantNotes(taskId);
+                                setParticipantNotes(notes);
+                                setEditingNoteId(null);
+                                // 업무 정보도 새로고침
+                                const updatedTask = await getTask(taskId);
+                                setTask(updatedTask);
+                              } catch (error: any) {
+                                console.error("노트 저장 실패:", error);
+                                alert(
+                                  error.message || "노트 저장에 실패했습니다."
+                                );
+                              } finally {
+                                setIsSavingNote(false);
+                              }
+                            }}
+                            disabled={isSavingNote}
+                            className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isSavingNote ? "저장 중..." : "저장"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-white rounded-lg p-4 min-h-[100px]">
+                        {participant.note ? (
+                          <p className="text-gray-700 text-sm whitespace-pre-wrap">
+                            {participant.note}
+                          </p>
+                        ) : (
+                          <p className="text-gray-400 text-sm italic">
+                            {isCurrentUser
+                              ? "작성된 내용이 없습니다. '작성/수정' 버튼을 클릭하여 업무 내용을 작성해주세요."
+                              : "작성된 내용이 없습니다."}
+                          </p>
+                        )}
+                        {participant.updatedAt && (
+                          <p className="text-gray-400 text-xs mt-2">
+                            마지막 수정:{" "}
+                            {new Date(participant.updatedAt).toLocaleString(
+                              "ko-KR"
+                            )}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
-
-                  {isEditing && isCurrentUser ? (
-                    <div className="space-y-3">
-                      <textarea
-                        value={currentNote}
-                        onChange={(e) => {
-                          setNoteContent({
-                            ...noteContent,
-                            [participant.id]: e.target.value,
-                          });
-                        }}
-                        placeholder="업무 내용을 작성해주세요..."
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7F55B1] resize-none"
-                        rows={5}
-                      />
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={async () => {
-                            try {
-                              setIsSavingNote(true);
-                              await updateParticipantNote(
-                                taskId,
-                                participant.id,
-                                currentNote
-                              );
-                              // 노트 목록 새로고침
-                              const notes = await getParticipantNotes(taskId);
-                              setParticipantNotes(notes);
-                              setEditingNoteId(null);
-                              // 업무 정보도 새로고침
-                              const updatedTask = await getTask(taskId);
-                              setTask(updatedTask);
-                            } catch (error: any) {
-                              console.error("노트 저장 실패:", error);
-                              alert(
-                                error.message || "노트 저장에 실패했습니다."
-                              );
-                            } finally {
-                              setIsSavingNote(false);
-                            }
-                          }}
-                          disabled={isSavingNote}
-                          className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isSavingNote ? "저장 중..." : "저장"}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-white rounded-lg p-4 min-h-[100px]">
-                      {participant.note ? (
-                        <p className="text-gray-700 text-sm whitespace-pre-wrap">
-                          {participant.note}
-                        </p>
-                      ) : (
-                        <p className="text-gray-400 text-sm italic">
-                          {isCurrentUser
-                            ? "작성된 내용이 없습니다. '작성/수정' 버튼을 클릭하여 업무 내용을 작성해주세요."
-                            : "작성된 내용이 없습니다."}
-                        </p>
-                      )}
-                      {participant.updatedAt && (
-                        <p className="text-gray-400 text-xs mt-2">
-                          마지막 수정:{" "}
-                          {new Date(participant.updatedAt).toLocaleString(
-                            "ko-KR"
-                          )}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -585,6 +727,180 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
             </div>
           )}
 
+          {/* GitHub 활동 위젯 (개발팀 업무인 경우만) */}
+          {task?.isDevelopmentTask && task?.githubRepository && (
+            <TaskGithubActivityWidget taskId={task.id} />
+          )}
+
+          {/* 참고 링크 섹션 */}
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-200/30">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <span>🔗</span>
+                참고 링크
+              </h3>
+              {(() => {
+                const isParticipant = task?.participants?.some(
+                  (p) => p.userId === user?.id
+                );
+                const isAssignee = task?.assigneeId === user?.id;
+                const isTeamLeadOrAbove = [
+                  "TEAM_LEAD",
+                  "MANAGER",
+                  "DIRECTOR",
+                ].includes(user?.role || "");
+                const canEdit =
+                  isParticipant || isAssignee || isTeamLeadOrAbove;
+
+                if (!canEdit) return null;
+
+                return (
+                  <button
+                    onClick={() => {
+                      if (isEditingLinks) {
+                        setIsEditingLinks(false);
+                        setLinkInputs(task?.referenceLinks || []);
+                      } else {
+                        setIsEditingLinks(true);
+                        setLinkInputs(task?.referenceLinks || []);
+                      }
+                    }}
+                    className="text-sm text-[#7F55B1] hover:text-[#6B479A] font-medium hover:underline"
+                  >
+                    {isEditingLinks ? "취소" : "편집"}
+                  </button>
+                );
+              })()}
+            </div>
+
+            {isEditingLinks ? (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  {linkInputs.map((link, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        type="url"
+                        value={link}
+                        onChange={(e) => {
+                          const newLinks = [...linkInputs];
+                          newLinks[index] = e.target.value;
+                          setLinkInputs(newLinks);
+                        }}
+                        placeholder="https://..."
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7F55B1]"
+                      />
+                      <button
+                        onClick={() => {
+                          const newLinks = linkInputs.filter(
+                            (_, i) => i !== index
+                          );
+                          setLinkInputs(newLinks);
+                        }}
+                        className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm"
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setLinkInputs([...linkInputs, ""]);
+                    }}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+                  >
+                    + 링크 추가
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        setIsSavingLinks(true);
+                        const validLinks = linkInputs.filter(
+                          (link: string) => link.trim() !== ""
+                        );
+                        const updatedTask = await updateTaskLinks(
+                          taskId,
+                          validLinks
+                        );
+                        setTask(updatedTask);
+                        setIsEditingLinks(false);
+                        alert("링크가 저장되었습니다.");
+                      } catch (error: any) {
+                        console.error("링크 저장 실패:", error);
+                        alert(error.message || "링크 저장에 실패했습니다.");
+                      } finally {
+                        setIsSavingLinks(false);
+                      }
+                    }}
+                    disabled={isSavingLinks}
+                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSavingLinks ? "저장 중..." : "저장"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {task?.referenceLinks && task.referenceLinks.length > 0 ? (
+                  task.referenceLinks.map((link, index) => {
+                    const getLinkIcon = (url: string) => {
+                      if (url.includes("github.com")) return "🐙";
+                      if (
+                        url.includes("youtube.com") ||
+                        url.includes("youtu.be")
+                      )
+                        return "📺";
+                      return "🔗";
+                    };
+
+                    const getLinkLabel = (url: string) => {
+                      try {
+                        const urlObj = new URL(url);
+                        if (url.includes("github.com")) {
+                          const pathParts = urlObj.pathname
+                            .split("/")
+                            .filter(Boolean);
+                          if (pathParts.length >= 2) {
+                            return `${pathParts[0]}/${pathParts[1]}`;
+                          }
+                        }
+                        return urlObj.hostname.replace("www.", "");
+                      } catch {
+                        return url;
+                      }
+                    };
+
+                    return (
+                      <a
+                        key={index}
+                        href={link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 p-3 bg-white rounded-lg hover:bg-blue-50 transition-colors border border-blue-100"
+                      >
+                        <span className="text-2xl">{getLinkIcon(link)}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">
+                            {getLinkLabel(link)}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {link}
+                          </p>
+                        </div>
+                        <span className="text-gray-400">↗</span>
+                      </a>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-6 text-gray-400 text-sm">
+                    등록된 링크가 없습니다.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* 3개 카드 영역 */}
           <div className="grid grid-cols-3 gap-4">
             {/* 담당자 정보 카드 */}
@@ -621,25 +937,42 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
             {/* 참여자 카드 */}
             <div className="bg-gray-50 rounded-2xl p-5">
               <h3 className="text-gray-800 font-semibold mb-4">참여자</h3>
-              <div className="space-y-3">
-                {task?.participants?.slice(0, 3).map((participant) => (
-                  <div key={participant.id} className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center">
-                      <span className="text-gray-600 text-xs">
-                        {participant.user.name}
-                      </span>
+              <div className="space-y-3 max-h-[200px] overflow-y-auto pr-2 scrollbar-thin">
+                {task?.participants?.map((participant) => {
+                  const hasStarted = !!participant.startedAt;
+                  return (
+                    <div
+                      key={participant.id}
+                      className="flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-8 h-8 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-gray-600 text-xs">
+                            {participant.user.name}
+                          </span>
+                        </div>
+                        <p className="text-gray-700 text-sm truncate">
+                          {participant.user.name}
+                        </p>
+                      </div>
+                      {/* 업무 시작 여부 인디케이터 */}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {hasStarted ? (
+                          <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                            진행중
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-gray-400 font-medium">
+                            <span className="w-2 h-2 bg-gray-300 rounded-full"></span>
+                            대기중
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-gray-700 text-sm">
-                      {participant.user.name}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-              {task?.participants && task.participants.length > 3 && (
-                <p className="text-gray-400 text-xs mt-3">
-                  +{task.participants.length - 3}명 더 보기
-                </p>
-              )}
             </div>
           </div>
         </div>

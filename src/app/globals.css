@@ -33,4 +33,26 @@ body {
   .scrollbar-hide::-webkit-scrollbar {
     display: none;  /* Chrome, Safari and Opera */
   }
+  
+  .scrollbar-thin {
+    scrollbar-width: thin;  /* Firefox */
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;  /* Chrome, Safari, Opera */
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
 }

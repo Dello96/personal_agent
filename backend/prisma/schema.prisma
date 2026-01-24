@@ -37,6 +37,7 @@ model Team {
   tasks          Task[]
   calendarEvents CalendarEvent[]
   chatRoom       ChatRoom?
+  githubRepository GitHubRepository?
 }
 
 model Task {
@@ -52,15 +53,17 @@ model Task {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   completedAt DateTime?
+  isDevelopmentTask Boolean @default(false) // 개발팀 업무 여부
 
   assignee User @relation("Assignee", fields: [assigneeId], references: [id])
   assigner User @relation("Assigner", fields: [assignerId], references: [id])
   team     Team @relation(fields: [teamId], references: [teamName])
 
   participants TaskParticipant[]
-
   statusHistory      TaskStatusHistory[]
   referenceImageUrls String[]            @default([])
+  referenceLinks     String[]            @default([]) // 참고 링크 (GitHub, YouTube, 기타)
+  githubRepository   TaskGitHubRepository?
 }
 
 model TaskParticipant {
@@ -69,6 +72,7 @@ model TaskParticipant {
   userId    String
   role      ParticipantRole @default(PARTICIPANT) // 역할 구분
   note      String?         // 참여자별 업무 작성 내용
+  startedAt DateTime?       // 참여자별 업무 시작 시간
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 
@@ -202,4 +206,76 @@ model Message {
 
   @@index([chatRoomId, createdAt])
   @@index([senderId])
+}
+
+model GitHubRepository {
+  id            String   @id @default(uuid())
+  teamId        String   @unique
+  owner         String   // GitHub username or organization
+  repo          String   // Repository name
+  accessToken   String   // GitHub Personal Access Token (암호화 필요)
+  webhookSecret String?  // Webhook secret for verification
+  webhookId     Int?     // GitHub webhook ID
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  team     Team            @relation(fields: [teamId], references: [teamName], onDelete: Cascade)
+  activities GitHubActivity[]
+
+  @@index([teamId])
+}
+
+model TaskGitHubRepository {
+  id            String   @id @default(uuid())
+  taskId        String   @unique
+  owner         String   // GitHub username or organization
+  repo          String   // Repository name
+  accessToken   String   // GitHub Personal Access Token (암호화 필요)
+  webhookSecret String?  // Webhook secret for verification
+  webhookId     Int?     // GitHub webhook ID
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  task     Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  activities TaskGitHubActivity[]
+
+  @@index([taskId])
+}
+
+model GitHubActivity {
+  id           String   @id @default(uuid())
+  repositoryId String
+  type         String   // "commit", "push", "pull_request"
+  action       String?  // "opened", "closed", "merged" (PR의 경우)
+  author       String
+  message      String
+  sha          String?  // Commit SHA
+  branch       String?
+  url          String
+  createdAt    DateTime @default(now())
+
+  repository GitHubRepository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId, createdAt])
+  @@index([type, createdAt])
+}
+
+model TaskGitHubActivity {
+  id           String   @id @default(uuid())
+  repositoryId String
+  type         String   // "commit", "push", "pull_request"
+  action       String?  // "opened", "closed", "merged" (PR의 경우)
+  author       String
+  message      String
+  sha          String?  // Commit SHA
+  branch       String?
+  url          String
+  createdAt    DateTime @default(now())
+
+  repository TaskGitHubRepository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId, createdAt])
+  @@index([type, createdAt])
 }

@@ -34,6 +34,12 @@ export default function TaskForm() {
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
 
+  // 개발팀 업무 및 GitHub 레포지토리 관련 상태
+  const [isDevelopmentTask, setIsDevelopmentTask] = useState(false);
+  const [githubOwner, setGithubOwner] = useState("");
+  const [githubRepo, setGithubRepo] = useState("");
+  const [githubAccessToken, setGithubAccessToken] = useState("");
+
   const priorityLabels: Record<string, { label: string; color: string }> = {
     LOW: { label: "낮음", color: "bg-gray-400" },
     MEDIUM: { label: "보통", color: "bg-blue-400" },
@@ -184,6 +190,13 @@ export default function TaskForm() {
         dueDate: dueDate || undefined,
         participantIds,
         referenceImageUrls: imageUrls,
+        isDevelopmentTask,
+        githubOwner: isDevelopmentTask && githubOwner ? githubOwner : undefined,
+        githubRepo: isDevelopmentTask && githubRepo ? githubRepo : undefined,
+        githubAccessToken:
+          isDevelopmentTask && githubAccessToken
+            ? githubAccessToken
+            : undefined,
       });
       alert("업무가 생성되었습니다!");
 
@@ -199,6 +212,10 @@ export default function TaskForm() {
       setImagePreviews([]);
       setUploadedImageUrls([]);
       setUploadProgress(0);
+      setIsDevelopmentTask(false);
+      setGithubOwner("");
+      setGithubRepo("");
+      setGithubAccessToken("");
       router.push("/");
     } catch (error) {
       console.error("업무 생성 실패:", error);
@@ -555,6 +572,69 @@ export default function TaskForm() {
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all"
               />
             </div>
+
+            {/* 개발팀 업무 체크박스 */}
+            <div>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isDevelopmentTask}
+                  onChange={(e) => setIsDevelopmentTask(e.target.checked)}
+                  className="w-5 h-5 text-[#7F55B1] border-gray-300 rounded focus:ring-[#7F55B1]"
+                />
+                <span className="text-sm font-semibold text-gray-700">
+                  개발팀 업무 (GitHub 레포지토리 연결)
+                </span>
+              </label>
+            </div>
+
+            {/* GitHub 레포지토리 정보 (개발팀 업무인 경우만 표시) */}
+            {isDevelopmentTask && (
+              <div className="space-y-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    GitHub Username 또는 Organization
+                  </label>
+                  <input
+                    type="text"
+                    value={githubOwner}
+                    onChange={(e) => setGithubOwner(e.target.value)}
+                    placeholder="예: octocat 또는 my-org"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Repository Name
+                  </label>
+                  <input
+                    type="text"
+                    value={githubRepo}
+                    onChange={(e) => setGithubRepo(e.target.value)}
+                    placeholder="예: my-repo"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    GitHub Personal Access Token
+                  </label>
+                  <input
+                    type="password"
+                    value={githubAccessToken}
+                    onChange={(e) => setGithubAccessToken(e.target.value)}
+                    placeholder="ghp_xxxxxxxxxxxx"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    GitHub Settings → Developer settings → Personal access
+                    tokens에서 생성하세요. (repo 권한 필요)
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* 업무 설명 */}
             <div>
