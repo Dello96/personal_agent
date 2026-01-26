@@ -5,62 +5,133 @@ const authenticate = require("../middleware/auth");
 const { Octokit } = require("@octokit/rest");
 const crypto = require("crypto");
 
+// Prisma 클라이언트 확인
+if (!prisma) {
+  console.error("❌ Prisma 클라이언트를 로드할 수 없습니다!");
+  throw new Error("Prisma 클라이언트 초기화 실패");
+}
+
 // Webhook 엔드포인트는 인증 미들웨어 제외 (GitHub에서 직접 호출)
 router.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  let requestId = null;
   try {
+    // 요청 추적을 위한 ID 생성
+    requestId = Date.now().toString();
+    console.log(`[${requestId}] 📥 GitHub Webhook 수신 시작`);
+
     const signature = req.headers["x-hub-signature-256"];
     const event = req.headers["x-github-event"];
-    const payload = JSON.parse(req.body.toString());
+    const deliveryId = req.headers["x-github-delivery"];
+
+    console.log(`[${requestId}] 헤더 정보:`, {
+      event,
+      deliveryId,
+      hasSignature: !!signature,
+      contentType: req.headers["content-type"],
+    });
 
     if (!signature || !event) {
+      console.error(`[${requestId}] ❌ 필수 헤더 누락: signature=${!!signature}, event=${!!event}`);
       return res.status(400).json({ error: "유효하지 않은 요청입니다." });
+    }
+
+    // 요청 본문 파싱
+    let payload;
+    try {
+      const bodyString = req.body.toString();
+      payload = JSON.parse(bodyString);
+      console.log(`[${requestId}] ✅ 페이로드 파싱 성공`);
+    } catch (parseError) {
+      console.error(`[${requestId}] ❌ 페이로드 파싱 실패:`, parseError.message);
+      return res.status(400).json({ error: "유효하지 않은 JSON 형식입니다." });
     }
 
     // 레포지토리 정보 찾기
     const fullName = payload.repository?.full_name;
     if (!fullName) {
+      console.error(`[${requestId}] ❌ 레포지토리 정보 없음:`, {
+        hasRepository: !!payload.repository,
+        repositoryKeys: payload.repository ? Object.keys(payload.repository) : [],
+      });
       return res.status(400).json({ error: "레포지토리 정보가 없습니다." });
     }
 
     const [owner, repo] = fullName.split("/");
+    console.log(`[${requestId}] 🔍 레포지토리 검색: ${owner}/${repo}`);
     
     // 먼저 팀 레포지토리에서 찾기
-    let repository = await prisma.githubRepository.findFirst({
+    let repository = await prisma.gitHubRepository.findFirst({
       where: { owner, repo },
     });
     let isTaskRepository = false;
 
     // 팀 레포지토리가 없으면 업무별 레포지토리에서 찾기
     if (!repository) {
+      console.log(`[${requestId}] 팀 레포지토리 없음, 업무별 레포지토리 검색 중...`);
       repository = await prisma.taskGitHubRepository.findFirst({
         where: { owner, repo },
       });
       isTaskRepository = !!repository;
     }
 
-    if (!repository || !repository.webhookSecret) {
+    if (!repository) {
+      console.error(`[${requestId}] ❌ 레포지토리를 찾을 수 없음: ${owner}/${repo}`);
       return res.status(404).json({ error: "레포지토리를 찾을 수 없습니다." });
     }
+
+    if (!repository.webhookSecret) {
+      console.error(`[${requestId}] ❌ Webhook secret이 없음: repositoryId=${repository.id}`);
+      return res.status(500).json({ error: "Webhook 설정이 올바르지 않습니다." });
+    }
+
+    console.log(`[${requestId}] ✅ 레포지토리 찾음: ${isTaskRepository ? "업무별" : "팀"} 레포지토리`);
 
     // Webhook 서명 검증
     const hmac = crypto.createHmac("sha256", repository.webhookSecret);
     const digest = "sha256=" + hmac.update(req.body).digest("hex");
 
     if (signature !== digest) {
+      console.error(`[${requestId}] ❌ 서명 검증 실패:`, {
+        expected: digest.substring(0, 20) + "...",
+        received: signature.substring(0, 20) + "...",
+      });
       return res.status(401).json({ error: "서명이 일치하지 않습니다." });
     }
 
+    console.log(`[${requestId}] ✅ 서명 검증 성공`);
+
     // 이벤트 처리
+    console.log(`[${requestId}] 🔄 이벤트 처리 시작: ${event}`);
     if (event === "push") {
       await handlePushEvent(payload, repository, isTaskRepository);
+      console.log(`[${requestId}] ✅ Push 이벤트 처리 완료`);
     } else if (event === "pull_request") {
       await handlePullRequestEvent(payload, repository, isTaskRepository);
+      console.log(`[${requestId}] ✅ Pull Request 이벤트 처리 완료`);
+    } else {
+      console.log(`[${requestId}] ⚠️ 알 수 없는 이벤트 타입: ${event}`);
+      // 알 수 없는 이벤트는 성공으로 처리 (GitHub이 재시도하지 않도록)
     }
 
+    console.log(`[${requestId}] ✅ Webhook 처리 완료`);
     res.status(200).send("OK");
   } catch (error) {
-    console.error("Webhook 처리 오류:", error);
-    res.status(500).json({ error: "서버 오류" });
+    console.error(`[${requestId || "UNKNOWN"}] ❌ Webhook 처리 오류:`, {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      code: error.code,
+    });
+
+    // 이미 응답을 보냈는지 확인
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: "서버 오류",
+        details: process.env.NODE_ENV === "development" ? error.message : undefined,
+      });
+    } else {
+      console.error(`[${requestId || "UNKNOWN"}] ⚠️ 응답이 이미 전송됨`);
+    }
   }
 });
 
@@ -129,7 +200,7 @@ router.post("/repositories", async (req, res) => {
     }
 
     // 데이터베이스에 저장 (기존 레포지토리가 있으면 업데이트)
-    const repository = await prisma.githubRepository.upsert({
+    const repository = await prisma.gitHubRepository.upsert({
       where: { teamId: teamName },
       update: {
         owner,
@@ -172,7 +243,7 @@ router.get("/repositories", async (req, res) => {
   try {
     const { teamName } = req.user;
 
-    const repository = await prisma.githubRepository.findUnique({
+    const repository = await prisma.gitHubRepository.findUnique({
       where: { teamId: teamName },
       include: {
         activities: {
@@ -214,7 +285,7 @@ router.delete("/repositories/:id", async (req, res) => {
       });
     }
 
-    const repository = await prisma.githubRepository.findUnique({
+    const repository = await prisma.gitHubRepository.findUnique({
       where: { id },
     });
 
@@ -238,7 +309,7 @@ router.delete("/repositories/:id", async (req, res) => {
     }
 
     // 데이터베이스에서 삭제
-    await prisma.githubRepository.delete({
+    await prisma.gitHubRepository.delete({
       where: { id },
     });
 
@@ -252,10 +323,15 @@ router.delete("/repositories/:id", async (req, res) => {
 // GitHub 활동 조회 (팀 레포지토리)
 router.get("/activities", async (req, res) => {
   try {
+    if (!prisma) {
+      console.error("❌ Prisma 클라이언트가 없습니다!");
+      return res.status(500).json({ error: "데이터베이스 연결 오류" });
+    }
+
     const { teamName } = req.user;
     const { limit = 20, type } = req.query;
 
-    const repository = await prisma.githubRepository.findUnique({
+    const repository = await prisma.gitHubRepository.findUnique({
       where: { teamId: teamName },
     });
 
@@ -271,7 +347,7 @@ router.get("/activities", async (req, res) => {
       where.type = type;
     }
 
-    const activities = await prisma.githubActivity.findMany({
+    const activities = await prisma.gitHubActivity.findMany({
       where,
       orderBy: { createdAt: "desc" },
       take: parseInt(limit),
@@ -280,13 +356,27 @@ router.get("/activities", async (req, res) => {
     res.json(activities);
   } catch (error) {
     console.error("활동 조회 오류:", error);
-    res.status(500).json({ error: "서버 오류" });
+    console.error("에러 상세:", {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      prismaType: typeof prisma,
+    });
+    res.status(500).json({ 
+      error: "서버 오류",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 });
 
 // 업무별 GitHub 활동 조회
 router.get("/task-activities/:taskId", async (req, res) => {
   try {
+    if (!prisma) {
+      console.error("❌ Prisma 클라이언트가 없습니다!");
+      return res.status(500).json({ error: "데이터베이스 연결 오류" });
+    }
+
     const { taskId } = req.params;
     const { limit = 20, type } = req.query;
 
@@ -323,7 +413,16 @@ router.get("/task-activities/:taskId", async (req, res) => {
     res.json(activities);
   } catch (error) {
     console.error("업무별 활동 조회 오류:", error);
-    res.status(500).json({ error: "서버 오류" });
+    console.error("에러 상세:", {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      prismaType: typeof prisma,
+    });
+    res.status(500).json({ 
+      error: "서버 오류",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 });
 
@@ -348,7 +447,7 @@ async function handlePushEvent(payload, repository, isTaskRepository = false) {
         });
       } else {
         // 팀 레포지토리
-        await prisma.githubActivity.create({
+        await prisma.gitHubActivity.create({
           data: {
             repositoryId: repository.id,
             type: "commit",
@@ -428,7 +527,7 @@ async function handlePullRequestEvent(payload, repository, isTaskRepository = fa
       });
     } else {
       // 팀 레포지토리
-      await prisma.githubActivity.create({
+        await prisma.gitHubActivity.create({
         data: {
           repositoryId: repository.id,
           type: "pull_request",
