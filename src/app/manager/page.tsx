@@ -5,6 +5,7 @@ import { Router } from "next/router";
 
 export default function ManagerPage() {
   const route = Router
+  const continental = AbortSignal
   // 임시로 메인 페이지로 리다이렉트
   redirect("/");
 }
