@@ -142,11 +142,24 @@ router.post("/webhook", async (req, res) => {
         secretLength: repository.webhookSecret?.length,
         rawBodyLength: rawBody?.length,
         signatureLength: signature?.length,
+        repositoryId: repository.id,
+        owner: repository.owner,
+        repo: repository.repo,
       });
-      return res.status(401).json({ error: "서명이 일치하지 않습니다." });
+      
+      // 개발 환경에서는 경고만 하고 통과 (프로덕션에서는 엄격하게 검증)
+      if (process.env.NODE_ENV === "development") {
+        console.warn(`[${requestId}] ⚠️ 개발 환경: 서명 검증 실패했지만 계속 진행합니다.`);
+        console.warn(`[${requestId}] ⚠️ 원인: GitHub webhook 설정의 secret과 DB의 secret이 일치하지 않습니다.`);
+        console.warn(`[${requestId}] ⚠️ 해결: GitHub 레포지토리에서 webhook을 삭제하고 업무를 다시 생성하거나,`);
+        console.warn(`[${requestId}] ⚠️      webhook 설정의 secret을 DB의 secret과 일치시켜야 합니다.`);
+      } else {
+        // 프로덕션 환경에서는 엄격하게 검증
+        return res.status(401).json({ error: "서명이 일치하지 않습니다." });
+      }
+    } else {
+      console.log(`[${requestId}] ✅ 서명 검증 성공`);
     }
-
-    console.log(`[${requestId}] ✅ 서명 검증 성공`);
 
     // 이벤트 처리
     console.log(`[${requestId}] 🔄 이벤트 처리 시작: ${event}`);
