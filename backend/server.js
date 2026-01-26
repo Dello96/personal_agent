@@ -35,16 +35,12 @@ app.get("/", function (req, res) {
 app.use(cors());
 app.use(express.static(__dirname));
 
-// GitHub webhook은 raw body가 필요하므로, webhook 경로를 제외하고 json 파싱
-// webhook 경로는 routes/github.js에서 express.raw()로 처리
-app.use((req, res, next) => {
-  if (req.path === '/api/github/webhook') {
-    // webhook 경로는 raw body로 처리 (routes/github.js에서 express.raw() 사용)
-    return next();
-  }
-  // 다른 경로는 JSON 파싱
-  express.json()(req, res, next);
-});
+// GitHub webhook 경로는 raw body가 필요하므로 JSON 파싱 전에 처리
+// webhook 경로에만 express.raw() 적용
+app.use('/api/github/webhook', express.raw({ type: 'application/json' }));
+
+// 나머지 경로는 JSON 파싱
+app.use(express.json());
 
 const tasksRoutes = require("./routes/tasks");
 const teamRoutes = require("./routes/team");

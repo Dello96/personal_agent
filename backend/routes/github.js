@@ -12,7 +12,8 @@ if (!prisma) {
 }
 
 // Webhook 엔드포인트는 인증 미들웨어 제외 (GitHub에서 직접 호출)
-router.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+// express.raw()는 server.js에서 이미 적용됨
+router.post("/webhook", async (req, res) => {
   let requestId = null;
   try {
     // 요청 추적을 위한 ID 생성
@@ -47,20 +48,20 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
       return res.status(400).json({ error: "유효하지 않은 요청입니다. x-hub-signature-256 헤더가 필요합니다." });
     }
 
-    // 요청 본문 파싱
+    // 요청 본문 파싱 (express.raw()로 Buffer 형태로 받음)
     let payload;
+    let rawBody;
     try {
-      // express.json()이 이미 파싱한 경우와 raw body인 경우 모두 처리
-      if (typeof req.body === 'object' && req.body !== null && !Buffer.isBuffer(req.body)) {
-        // 이미 파싱된 객체인 경우
-        payload = req.body;
-        console.log(`[${requestId}] ✅ 페이로드 (이미 파싱됨)`);
-      } else {
-        // Raw body인 경우 (Buffer 또는 string)
-        const bodyString = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body);
-        payload = JSON.parse(bodyString);
-        console.log(`[${requestId}] ✅ 페이로드 파싱 성공 (raw body)`);
+      // req.body는 express.raw()로 인해 Buffer 형태
+      if (!Buffer.isBuffer(req.body)) {
+        console.error(`[${requestId}] ❌ Body가 Buffer가 아님:`, typeof req.body);
+        return res.status(400).json({ error: "요청 본문 형식이 올바르지 않습니다." });
       }
+      
+      rawBody = req.body; // 서명 검증을 위해 원본 보존
+      const bodyString = req.body.toString('utf8');
+      payload = JSON.parse(bodyString);
+      console.log(`[${requestId}] ✅ 페이로드 파싱 성공`);
     } catch (parseError) {
       console.error(`[${requestId}] ❌ 페이로드 파싱 실패:`, {
         message: parseError.message,
@@ -68,8 +69,8 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
         isBuffer: Buffer.isBuffer(req.body),
         bodyLength: req.body?.length,
         bodyPreview: Buffer.isBuffer(req.body) 
-          ? req.body.toString('utf8').substring(0, 100) 
-          : String(req.body).substring(0, 100),
+          ? req.body.toString('utf8').substring(0, 200) 
+          : String(req.body).substring(0, 200),
       });
       return res.status(400).json({ error: "유효하지 않은 JSON 형식입니다." });
     }
@@ -130,26 +131,17 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
 
     console.log(`[${requestId}] ✅ 레포지토리 찾음: ${isTaskRepository ? "업무별" : "팀"} 레포지토리`);
 
-    // Webhook 서명 검증
-    // 서명 검증을 위해 원본 raw body가 필요함
-    let rawBody;
-    if (Buffer.isBuffer(req.body)) {
-      rawBody = req.body;
-    } else if (typeof req.body === 'string') {
-      rawBody = Buffer.from(req.body, 'utf8');
-    } else {
-      // 이미 파싱된 객체인 경우, 원본을 복원할 수 없으므로 서명 검증 스킵
-      console.warn(`[${requestId}] ⚠️ Raw body를 사용할 수 없어 서명 검증을 스킵합니다`);
-      rawBody = Buffer.from(JSON.stringify(payload), 'utf8');
-    }
-    
+    // Webhook 서명 검증 (rawBody는 위에서 이미 설정됨)
     const hmac = crypto.createHmac("sha256", repository.webhookSecret);
     const digest = "sha256=" + hmac.update(rawBody).digest("hex");
 
     if (signature !== digest) {
       console.error(`[${requestId}] ❌ 서명 검증 실패:`, {
-        expected: digest.substring(0, 20) + "...",
-        received: signature.substring(0, 20) + "...",
+        expected: digest.substring(0, 30) + "...",
+        received: signature.substring(0, 30) + "...",
+        secretLength: repository.webhookSecret?.length,
+        rawBodyLength: rawBody?.length,
+        signatureLength: signature?.length,
       });
       return res.status(401).json({ error: "서명이 일치하지 않습니다." });
     }
