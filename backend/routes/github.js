@@ -50,11 +50,27 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
     // 요청 본문 파싱
     let payload;
     try {
-      const bodyString = req.body.toString();
-      payload = JSON.parse(bodyString);
-      console.log(`[${requestId}] ✅ 페이로드 파싱 성공`);
+      // express.json()이 이미 파싱한 경우와 raw body인 경우 모두 처리
+      if (typeof req.body === 'object' && req.body !== null && !Buffer.isBuffer(req.body)) {
+        // 이미 파싱된 객체인 경우
+        payload = req.body;
+        console.log(`[${requestId}] ✅ 페이로드 (이미 파싱됨)`);
+      } else {
+        // Raw body인 경우 (Buffer 또는 string)
+        const bodyString = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body);
+        payload = JSON.parse(bodyString);
+        console.log(`[${requestId}] ✅ 페이로드 파싱 성공 (raw body)`);
+      }
     } catch (parseError) {
-      console.error(`[${requestId}] ❌ 페이로드 파싱 실패:`, parseError.message);
+      console.error(`[${requestId}] ❌ 페이로드 파싱 실패:`, {
+        message: parseError.message,
+        bodyType: typeof req.body,
+        isBuffer: Buffer.isBuffer(req.body),
+        bodyLength: req.body?.length,
+        bodyPreview: Buffer.isBuffer(req.body) 
+          ? req.body.toString('utf8').substring(0, 100) 
+          : String(req.body).substring(0, 100),
+      });
       return res.status(400).json({ error: "유효하지 않은 JSON 형식입니다." });
     }
 
@@ -115,8 +131,20 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
     console.log(`[${requestId}] ✅ 레포지토리 찾음: ${isTaskRepository ? "업무별" : "팀"} 레포지토리`);
 
     // Webhook 서명 검증
+    // 서명 검증을 위해 원본 raw body가 필요함
+    let rawBody;
+    if (Buffer.isBuffer(req.body)) {
+      rawBody = req.body;
+    } else if (typeof req.body === 'string') {
+      rawBody = Buffer.from(req.body, 'utf8');
+    } else {
+      // 이미 파싱된 객체인 경우, 원본을 복원할 수 없으므로 서명 검증 스킵
+      console.warn(`[${requestId}] ⚠️ Raw body를 사용할 수 없어 서명 검증을 스킵합니다`);
+      rawBody = Buffer.from(JSON.stringify(payload), 'utf8');
+    }
+    
     const hmac = crypto.createHmac("sha256", repository.webhookSecret);
-    const digest = "sha256=" + hmac.update(req.body).digest("hex");
+    const digest = "sha256=" + hmac.update(rawBody).digest("hex");
 
     if (signature !== digest) {
       console.error(`[${requestId}] ❌ 서명 검증 실패:`, {
