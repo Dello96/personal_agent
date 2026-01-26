@@ -30,9 +30,21 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
       contentType: req.headers["content-type"],
     });
 
-    if (!signature || !event) {
-      console.error(`[${requestId}] ❌ 필수 헤더 누락: signature=${!!signature}, event=${!!event}`);
-      return res.status(400).json({ error: "유효하지 않은 요청입니다." });
+    if (!event) {
+      console.error(`[${requestId}] ❌ 필수 헤더 누락: event=${!!event}`);
+      return res.status(400).json({ error: "유효하지 않은 요청입니다. x-github-event 헤더가 필요합니다." });
+    }
+
+    // ping 이벤트는 서명 검증 없이 처리
+    if (event === "ping") {
+      console.log(`[${requestId}] ✅ Ping 이벤트 수신 (서명 검증 생략)`);
+      res.status(200).json({ message: "Webhook is active" });
+      return;
+    }
+
+    if (!signature) {
+      console.error(`[${requestId}] ❌ 서명 헤더 누락: signature=${!!signature}`);
+      return res.status(400).json({ error: "유효하지 않은 요청입니다. x-hub-signature-256 헤더가 필요합니다." });
     }
 
     // 요청 본문 파싱
@@ -49,9 +61,18 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
     // 레포지토리 정보 찾기
     const fullName = payload.repository?.full_name;
     if (!fullName) {
+      // ping 이벤트는 repository 정보가 없을 수 있음
+      if (event === "ping") {
+        console.log(`[${requestId}] ⚠️ Ping 이벤트: 레포지토리 정보 없음 (정상)`);
+        res.status(200).json({ message: "Webhook is active" });
+        return;
+      }
+      
       console.error(`[${requestId}] ❌ 레포지토리 정보 없음:`, {
+        event,
         hasRepository: !!payload.repository,
         repositoryKeys: payload.repository ? Object.keys(payload.repository) : [],
+        payloadKeys: Object.keys(payload),
       });
       return res.status(400).json({ error: "레포지토리 정보가 없습니다." });
     }
@@ -76,12 +97,19 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
 
     if (!repository) {
       console.error(`[${requestId}] ❌ 레포지토리를 찾을 수 없음: ${owner}/${repo}`);
-      return res.status(404).json({ error: "레포지토리를 찾을 수 없습니다." });
+      // 레포지토리를 찾을 수 없어도 200을 반환 (GitHub이 재시도하지 않도록)
+      // 하지만 로그는 남김
+      console.log(`[${requestId}] ⚠️ 레포지토리를 찾을 수 없지만 성공으로 처리 (재시도 방지)`);
+      res.status(200).json({ message: "Webhook received but repository not found" });
+      return;
     }
 
     if (!repository.webhookSecret) {
       console.error(`[${requestId}] ❌ Webhook secret이 없음: repositoryId=${repository.id}`);
-      return res.status(500).json({ error: "Webhook 설정이 올바르지 않습니다." });
+      // webhook secret이 없어도 200을 반환 (GitHub이 재시도하지 않도록)
+      console.log(`[${requestId}] ⚠️ Webhook secret이 없지만 성공으로 처리 (재시도 방지)`);
+      res.status(200).json({ message: "Webhook received but secret not configured" });
+      return;
     }
 
     console.log(`[${requestId}] ✅ 레포지토리 찾음: ${isTaskRepository ? "업무별" : "팀"} 레포지토리`);
@@ -102,7 +130,12 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
 
     // 이벤트 처리
     console.log(`[${requestId}] 🔄 이벤트 처리 시작: ${event}`);
-    if (event === "push") {
+    if (event === "ping") {
+      // GitHub webhook ping 이벤트 (webhook 생성 시 테스트)
+      console.log(`[${requestId}] ✅ Ping 이벤트 수신 (webhook 테스트)`);
+      res.status(200).json({ message: "Webhook is active" });
+      return;
+    } else if (event === "push") {
       await handlePushEvent(payload, repository, isTaskRepository);
       console.log(`[${requestId}] ✅ Push 이벤트 처리 완료`);
     } else if (event === "pull_request") {
