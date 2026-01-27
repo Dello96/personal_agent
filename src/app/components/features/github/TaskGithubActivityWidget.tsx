@@ -18,20 +18,38 @@ export default function TaskGithubActivityWidget({
   const loadActivities = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       console.log(`[TaskGithubActivityWidget] 활동 조회 시작: taskId=${taskId}`);
+      
       const data = await getTaskActivities(taskId, 10);
       console.log(`[TaskGithubActivityWidget] 활동 조회 완료: ${data.length}개`, data);
-      setActivities(data);
-      setError(null);
-    } catch (error: any) {
-      console.error(`[TaskGithubActivityWidget] 활동 조회 실패:`, error);
-      if (error.message?.includes("404")) {
-        setError("연결된 레포지토리가 없습니다.");
+      
+      if (Array.isArray(data)) {
+        setActivities(data);
+        if (data.length === 0) {
+          console.log(`[TaskGithubActivityWidget] 활동이 없습니다.`);
+        }
       } else {
-        setError("활동 내역을 불러오는데 실패했습니다.");
+        console.warn(`[TaskGithubActivityWidget] 예상치 못한 응답 형식:`, data);
+        setActivities([]);
+      }
+    } catch (error: any) {
+      console.error(`[TaskGithubActivityWidget] 활동 조회 실패:`, {
+        message: error.message,
+        stack: error.stack,
+        taskId,
+      });
+      
+      if (error.message?.includes("404") || error.message?.includes("연결된 레포지토리가 없습니다")) {
+        setError("연결된 레포지토리가 없습니다.");
+        setActivities([]);
+      } else {
+        setError(`활동 내역을 불러오는데 실패했습니다: ${error.message || "알 수 없는 오류"}`);
+        setActivities([]);
       }
     } finally {
       setLoading(false);
+      console.log(`[TaskGithubActivityWidget] 활동 조회 프로세스 완료`);
     }
   }, [taskId]);
 

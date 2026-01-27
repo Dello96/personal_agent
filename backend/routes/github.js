@@ -519,11 +519,24 @@ router.get("/task-activities/:taskId", async (req, res) => {
       where.type = type;
     }
 
+    console.log(`[API] 활동 조회: taskId=${taskId}, repositoryId=${task.githubRepository.id}`);
+    console.log(`[API] 조회 조건:`, where);
+    
     const activities = await prisma.taskGitHubActivity.findMany({
       where,
       orderBy: { createdAt: "desc" },
       take: parseInt(limit),
     });
+
+    console.log(`[API] 조회 결과: ${activities.length}개`);
+    if (activities.length > 0) {
+      console.log(`[API] 첫 번째 활동:`, {
+        id: activities[0].id,
+        repositoryId: activities[0].repositoryId,
+        type: activities[0].type,
+        message: activities[0].message,
+      });
+    }
 
     res.json(activities);
   } catch (error) {
@@ -564,6 +577,7 @@ async function handlePushEvent(payload, repository, isTaskRepository = false, re
         
         if (isTaskRepository) {
           // 업무별 레포지토리
+          console.log(`[${requestId || "PUSH"}] 💾 활동 저장: repositoryId=${repository.id}, type=commit, sha=${sha.substring(0, 7)}`);
           await prisma.taskGitHubActivity.create({
             data: {
               repositoryId: repository.id,
@@ -575,6 +589,7 @@ async function handlePushEvent(payload, repository, isTaskRepository = false, re
               url: url,
             },
           });
+          console.log(`[${requestId || "PUSH"}] ✅ 활동 저장 완료: repositoryId=${repository.id}, sha=${sha.substring(0, 7)}`);
         } else {
           // 팀 레포지토리
           await prisma.gitHubActivity.create({
