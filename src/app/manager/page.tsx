@@ -9,7 +9,7 @@ export default function ManagerPage() {
 
   return (
 
-  <div>ㅇㅇㅇㅇㅇ</div>
+  <div>ㅇㅇㅇㅇㅇㅂㅈㅇㅁㄴㅇㅁㄴㅇㅁㄴㅇ</div>
 )
   // 임시로 메인 페이지로 리다이렉트
 }

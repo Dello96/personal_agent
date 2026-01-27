@@ -132,19 +132,36 @@ router.post("/webhook", async (req, res) => {
     console.log(`[${requestId}] ✅ 레포지토리 찾음: ${isTaskRepository ? "업무별" : "팀"} 레포지토리`);
 
     // Webhook 서명 검증 (rawBody는 위에서 이미 설정됨)
+    console.log(`[${requestId}] 🔐 서명 검증 시작:`, {
+      secretFromDB: repository.webhookSecret?.substring(0, 10) + "...",
+      secretLength: repository.webhookSecret?.length,
+      rawBodyLength: rawBody?.length,
+      signatureFromGitHub: signature?.substring(0, 30) + "...",
+      signatureLength: signature?.length,
+    });
+    
     const hmac = crypto.createHmac("sha256", repository.webhookSecret);
     const digest = "sha256=" + hmac.update(rawBody).digest("hex");
 
+    console.log(`[${requestId}] 🔐 서명 비교:`, {
+      expected: digest,
+      received: signature,
+      match: signature === digest,
+    });
+
     if (signature !== digest) {
       console.error(`[${requestId}] ❌ 서명 검증 실패:`, {
-        expected: digest.substring(0, 30) + "...",
-        received: signature.substring(0, 30) + "...",
+        expected: digest,
+        received: signature,
+        secretFromDB: repository.webhookSecret?.substring(0, 20) + "...",
         secretLength: repository.webhookSecret?.length,
         rawBodyLength: rawBody?.length,
+        rawBodyPreview: rawBody.toString('utf8').substring(0, 100),
         signatureLength: signature?.length,
         repositoryId: repository.id,
         owner: repository.owner,
         repo: repository.repo,
+        webhookId: repository.webhookId,
       });
       
       // 개발 환경에서는 경고만 하고 통과 (프로덕션에서는 엄격하게 검증)
