@@ -131,58 +131,61 @@ router.post("/webhook", async (req, res) => {
 
     console.log(`[${requestId}] ✅ 레포지토리 찾음: ${isTaskRepository ? "업무별" : "팀"} 레포지토리`);
     
-    // webhookId가 null인 경우 경고 (webhook이 생성되지 않았을 수 있음)
+    // webhookId가 null인 경우 - webhook 생성이 실패했거나 수동으로 생성된 webhook
     if (!repository.webhookId) {
       console.warn(`[${requestId}] ⚠️ Webhook ID가 null입니다.`);
       console.warn(`[${requestId}] ⚠️ 이는 webhook 생성이 실패했거나 수동으로 생성된 webhook일 수 있습니다.`);
-      console.warn(`[${requestId}] ⚠️ GitHub의 webhook secret과 DB의 secret이 일치하지 않을 수 있습니다.`);
-    }
-
-    // Webhook 서명 검증 (rawBody는 위에서 이미 설정됨)
-    console.log(`[${requestId}] 🔐 서명 검증 시작:`, {
-      secretFromDB: repository.webhookSecret?.substring(0, 10) + "...",
-      secretLength: repository.webhookSecret?.length,
-      rawBodyLength: rawBody?.length,
-      signatureFromGitHub: signature?.substring(0, 30) + "...",
-      signatureLength: signature?.length,
-    });
-    
-    const hmac = crypto.createHmac("sha256", repository.webhookSecret);
-    const digest = "sha256=" + hmac.update(rawBody).digest("hex");
-
-    console.log(`[${requestId}] 🔐 서명 비교:`, {
-      expected: digest,
-      received: signature,
-      match: signature === digest,
-    });
-
-    if (signature !== digest) {
-      console.error(`[${requestId}] ❌ 서명 검증 실패:`, {
-        expected: digest,
-        received: signature,
-        secretFromDB: repository.webhookSecret?.substring(0, 20) + "...",
+      console.warn(`[${requestId}] ⚠️ 서명 검증을 스킵하고 계속 진행합니다.`);
+      // webhookId가 null인 경우 서명 검증 스킵 (webhook이 자동 생성되지 않았을 수 있음)
+      // 개발 환경에서는 계속 진행, 프로덕션에서는 경고만 표시
+    } else {
+      // Webhook 서명 검증 (webhookId가 있는 경우만)
+      console.log(`[${requestId}] 🔐 서명 검증 시작:`, {
+        webhookId: repository.webhookId,
+        secretFromDB: repository.webhookSecret?.substring(0, 10) + "...",
         secretLength: repository.webhookSecret?.length,
         rawBodyLength: rawBody?.length,
-        rawBodyPreview: rawBody.toString('utf8').substring(0, 100),
+        signatureFromGitHub: signature?.substring(0, 30) + "...",
         signatureLength: signature?.length,
-        repositoryId: repository.id,
-        owner: repository.owner,
-        repo: repository.repo,
-        webhookId: repository.webhookId,
       });
       
-      // 개발 환경에서는 경고만 하고 통과 (프로덕션에서는 엄격하게 검증)
-      if (process.env.NODE_ENV === "development") {
-        console.warn(`[${requestId}] ⚠️ 개발 환경: 서명 검증 실패했지만 계속 진행합니다.`);
-        console.warn(`[${requestId}] ⚠️ 원인: GitHub webhook 설정의 secret과 DB의 secret이 일치하지 않습니다.`);
-        console.warn(`[${requestId}] ⚠️ 해결: GitHub 레포지토리에서 webhook을 삭제하고 업무를 다시 생성하거나,`);
-        console.warn(`[${requestId}] ⚠️      webhook 설정의 secret을 DB의 secret과 일치시켜야 합니다.`);
+      const hmac = crypto.createHmac("sha256", repository.webhookSecret);
+      const digest = "sha256=" + hmac.update(rawBody).digest("hex");
+
+      console.log(`[${requestId}] 🔐 서명 비교:`, {
+        expected: digest,
+        received: signature,
+        match: signature === digest,
+      });
+
+      if (signature !== digest) {
+        console.error(`[${requestId}] ❌ 서명 검증 실패:`, {
+          expected: digest,
+          received: signature,
+          secretFromDB: repository.webhookSecret?.substring(0, 20) + "...",
+          secretLength: repository.webhookSecret?.length,
+          rawBodyLength: rawBody?.length,
+          rawBodyPreview: rawBody.toString('utf8').substring(0, 100),
+          signatureLength: signature?.length,
+          repositoryId: repository.id,
+          owner: repository.owner,
+          repo: repository.repo,
+          webhookId: repository.webhookId,
+        });
+        
+        // 개발 환경에서는 경고만 하고 통과 (프로덕션에서는 엄격하게 검증)
+        if (process.env.NODE_ENV === "development") {
+          console.warn(`[${requestId}] ⚠️ 개발 환경: 서명 검증 실패했지만 계속 진행합니다.`);
+          console.warn(`[${requestId}] ⚠️ 원인: GitHub webhook 설정의 secret과 DB의 secret이 일치하지 않습니다.`);
+          console.warn(`[${requestId}] ⚠️ 해결: GitHub 레포지토리에서 webhook을 삭제하고 업무를 다시 생성하거나,`);
+          console.warn(`[${requestId}] ⚠️      webhook 설정의 secret을 DB의 secret과 일치시켜야 합니다.`);
+        } else {
+          // 프로덕션 환경에서는 엄격하게 검증
+          return res.status(401).json({ error: "서명이 일치하지 않습니다." });
+        }
       } else {
-        // 프로덕션 환경에서는 엄격하게 검증
-        return res.status(401).json({ error: "서명이 일치하지 않습니다." });
+        console.log(`[${requestId}] ✅ 서명 검증 성공`);
       }
-    } else {
-      console.log(`[${requestId}] ✅ 서명 검증 성공`);
     }
 
     // 이벤트 처리
@@ -193,11 +196,33 @@ router.post("/webhook", async (req, res) => {
       res.status(200).json({ message: "Webhook is active" });
       return;
     } else if (event === "push") {
-      await handlePushEvent(payload, repository, isTaskRepository);
-      console.log(`[${requestId}] ✅ Push 이벤트 처리 완료`);
+      try {
+        await handlePushEvent(payload, repository, isTaskRepository, requestId);
+        console.log(`[${requestId}] ✅ Push 이벤트 처리 완료`);
+      } catch (pushError) {
+        console.error(`[${requestId}] ❌ Push 이벤트 처리 중 오류:`, {
+          message: pushError.message,
+          stack: pushError.stack,
+          name: pushError.name,
+          code: pushError.code,
+        });
+        // 에러가 발생해도 200 응답 (GitHub이 재시도하지 않도록)
+        // 하지만 로그는 남김
+      }
     } else if (event === "pull_request") {
-      await handlePullRequestEvent(payload, repository, isTaskRepository);
-      console.log(`[${requestId}] ✅ Pull Request 이벤트 처리 완료`);
+      try {
+        await handlePullRequestEvent(payload, repository, isTaskRepository, requestId);
+        console.log(`[${requestId}] ✅ Pull Request 이벤트 처리 완료`);
+      } catch (prError) {
+        console.error(`[${requestId}] ❌ Pull Request 이벤트 처리 중 오류:`, {
+          message: prError.message,
+          stack: prError.stack,
+          name: prError.name,
+          code: prError.code,
+        });
+        // 에러가 발생해도 200 응답 (GitHub이 재시도하지 않도록)
+        // 하지만 로그는 남김
+      }
     } else {
       console.log(`[${requestId}] ⚠️ 알 수 없는 이벤트 타입: ${event}`);
       // 알 수 없는 이벤트는 성공으로 처리 (GitHub이 재시도하지 않도록)
@@ -517,90 +542,151 @@ router.get("/task-activities/:taskId", async (req, res) => {
 });
 
 // Push 이벤트 처리
-async function handlePushEvent(payload, repository, isTaskRepository = false) {
+async function handlePushEvent(payload, repository, isTaskRepository = false, requestId = null) {
   try {
     const commits = payload.commits || [];
+    console.log(`[${requestId || "PUSH"}] 📝 커밋 처리 시작: ${commits.length}개`);
     
-    for (const commit of commits) {
-      if (isTaskRepository) {
-        // 업무별 레포지토리
-        await prisma.taskGitHubActivity.create({
-          data: {
-            repositoryId: repository.id,
-            type: "commit",
-            author: commit.author.name || commit.author.username,
-            message: commit.message,
-            sha: commit.id,
-            branch: payload.ref.replace("refs/heads/", ""),
-            url: commit.url,
+    if (commits.length === 0) {
+      console.log(`[${requestId || "PUSH"}] ⚠️ 커밋이 없습니다. (force push 또는 태그일 수 있음)`);
+      // 커밋이 없어도 push 이벤트는 정상 처리
+      return;
+    }
+    
+    for (let i = 0; i < commits.length; i++) {
+      const commit = commits[i];
+      try {
+        const author = commit.author?.name || commit.author?.username || commit.committer?.name || commit.committer?.username || "Unknown";
+        const message = commit.message || "";
+        const sha = commit.id || commit.sha || "";
+        const branch = payload.ref ? payload.ref.replace("refs/heads/", "") : "main";
+        const url = commit.url || "";
+        
+        if (isTaskRepository) {
+          // 업무별 레포지토리
+          await prisma.taskGitHubActivity.create({
+            data: {
+              repositoryId: repository.id,
+              type: "commit",
+              author: author,
+              message: message,
+              sha: sha,
+              branch: branch,
+              url: url,
+            },
+          });
+        } else {
+          // 팀 레포지토리
+          await prisma.gitHubActivity.create({
+            data: {
+              repositoryId: repository.id,
+              type: "commit",
+              author: author,
+              message: message,
+              sha: sha,
+              branch: branch,
+              url: url,
+            },
+          });
+        }
+        console.log(`[${requestId || "PUSH"}] ✅ 커밋 ${i + 1}/${commits.length} 저장 완료: ${sha.substring(0, 7)}`);
+      } catch (commitError) {
+        console.error(`[${requestId || "PUSH"}] ❌ 커밋 ${i + 1}/${commits.length} 저장 실패:`, {
+          message: commitError.message,
+          commit: {
+            id: commit.id,
+            author: commit.author,
+            message: commit.message?.substring(0, 50),
           },
         });
-      } else {
-        // 팀 레포지토리
-        await prisma.gitHubActivity.create({
-          data: {
-            repositoryId: repository.id,
-            type: "commit",
-            author: commit.author.name || commit.author.username,
-            message: commit.message,
-            sha: commit.id,
-            branch: payload.ref.replace("refs/heads/", ""),
-            url: commit.url,
-          },
-        });
+        // 개별 커밋 저장 실패해도 계속 진행
       }
     }
 
     // WebSocket으로 알림 전송
-    const { chatWSS } = require("../server");
-    if (chatWSS) {
-      if (isTaskRepository) {
-        // 업무별 레포지토리: 해당 업무의 팀에 알림
-        const taskRepo = await prisma.taskGitHubRepository.findUnique({
-          where: { id: repository.id },
-          select: { taskId: true },
-        });
-        if (taskRepo) {
-          const task = await prisma.task.findUnique({
-            where: { id: taskRepo.taskId },
-            select: { teamId: true },
+    try {
+      const { chatWSS } = require("../server");
+      if (chatWSS) {
+        if (isTaskRepository) {
+          // 업무별 레포지토리: 해당 업무의 팀에 알림
+          const taskRepo = await prisma.taskGitHubRepository.findUnique({
+            where: { id: repository.id },
+            select: { taskId: true },
           });
-          if (task) {
-            chatWSS.broadcastToTeam(task.teamId, {
-              type: "github_activity",
-              data: {
-                type: "push",
-                repository: `${repository.owner}/${repository.repo}`,
-                branch: payload.ref.replace("refs/heads/", ""),
-                commits: commits.length,
-                taskId: taskRepo.taskId,
-              },
+          if (taskRepo) {
+            const task = await prisma.task.findUnique({
+              where: { id: taskRepo.taskId },
+              select: { teamId: true },
             });
+            if (task) {
+              chatWSS.broadcastToTeam(task.teamId, {
+                type: "github_activity",
+                data: {
+                  type: "push",
+                  repository: `${repository.owner}/${repository.repo}`,
+                  branch: payload.ref ? payload.ref.replace("refs/heads/", "") : "main",
+                  commits: commits.length,
+                  taskId: taskRepo.taskId,
+                },
+              });
+              console.log(`[${requestId || "PUSH"}] 📡 WebSocket 알림 전송: 팀 ${task.teamId}`);
+            } else {
+              console.warn(`[${requestId || "PUSH"}] ⚠️ 업무를 찾을 수 없음: taskId=${taskRepo.taskId}`);
+            }
+          } else {
+            console.warn(`[${requestId || "PUSH"}] ⚠️ TaskGitHubRepository를 찾을 수 없음: repositoryId=${repository.id}`);
           }
+        } else {
+          // 팀 레포지토리
+          chatWSS.broadcastToTeam(repository.teamId, {
+            type: "github_activity",
+            data: {
+              type: "push",
+              repository: `${repository.owner}/${repository.repo}`,
+              branch: payload.ref ? payload.ref.replace("refs/heads/", "") : "main",
+              commits: commits.length,
+            },
+          });
+          console.log(`[${requestId || "PUSH"}] 📡 WebSocket 알림 전송: 팀 ${repository.teamId}`);
         }
       } else {
-        // 팀 레포지토리
-        chatWSS.broadcastToTeam(repository.teamId, {
-          type: "github_activity",
-          data: {
-            type: "push",
-            repository: `${repository.owner}/${repository.repo}`,
-            branch: payload.ref.replace("refs/heads/", ""),
-            commits: commits.length,
-          },
-        });
+        console.warn(`[${requestId || "PUSH"}] ⚠️ WebSocket 서버를 찾을 수 없음`);
       }
+    } catch (wsError) {
+      console.error(`[${requestId || "PUSH"}] ❌ WebSocket 알림 전송 실패:`, {
+        message: wsError.message,
+        stack: wsError.stack,
+      });
+      // WebSocket 실패해도 계속 진행
     }
   } catch (error) {
-    console.error("Push 이벤트 처리 오류:", error);
+    console.error(`[${requestId || "PUSH"}] ❌ Push 이벤트 처리 오류:`, {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      code: error.code,
+    });
+    throw error; // 상위로 에러 전달
   }
 }
 
 // Pull Request 이벤트 처리
-async function handlePullRequestEvent(payload, repository, isTaskRepository = false) {
+async function handlePullRequestEvent(payload, repository, isTaskRepository = false, requestId = null) {
   try {
     const pr = payload.pull_request;
     const action = payload.action;
+
+    if (!pr) {
+      console.error(`[${requestId || "PR"}] ❌ Pull Request 정보가 없습니다.`);
+      throw new Error("Pull Request 정보가 없습니다.");
+    }
+
+    const author = pr.user?.login || pr.head?.user?.login || "Unknown";
+    const title = pr.title || "";
+    const branch = pr.head?.ref || pr.base?.ref || "main";
+    const url = pr.html_url || pr.url || "";
+
+    console.log(`[${requestId || "PR"}] 📝 Pull Request 처리 시작: ${action} by ${author}`);
 
     if (isTaskRepository) {
       // 업무별 레포지토리
@@ -609,71 +695,96 @@ async function handlePullRequestEvent(payload, repository, isTaskRepository = fa
           repositoryId: repository.id,
           type: "pull_request",
           action: action,
-          author: pr.user.login,
-          message: pr.title,
-          branch: pr.head.ref,
-          url: pr.html_url,
+          author: author,
+          message: title,
+          branch: branch,
+          url: url,
         },
       });
     } else {
       // 팀 레포지토리
-        await prisma.gitHubActivity.create({
+      await prisma.gitHubActivity.create({
         data: {
           repositoryId: repository.id,
           type: "pull_request",
           action: action,
-          author: pr.user.login,
-          message: pr.title,
-          branch: pr.head.ref,
-          url: pr.html_url,
+          author: author,
+          message: title,
+          branch: branch,
+          url: url,
         },
       });
     }
+    console.log(`[${requestId || "PR"}] ✅ Pull Request 저장 완료: ${action}`);
 
     // WebSocket으로 알림 전송
-    const { chatWSS } = require("../server");
-    if (chatWSS) {
-      if (isTaskRepository) {
-        // 업무별 레포지토리: 해당 업무의 팀에 알림
-        const taskRepo = await prisma.taskGitHubRepository.findUnique({
-          where: { id: repository.id },
-          select: { taskId: true },
-        });
-        const task = taskRepo ? await prisma.task.findUnique({
-          where: { id: taskRepo.taskId },
-          select: { teamId: true },
-        }) : null;
-        if (task) {
-          chatWSS.broadcastToTeam(task.teamId, {
+    try {
+      const { chatWSS } = require("../server");
+      if (chatWSS) {
+        if (isTaskRepository) {
+          // 업무별 레포지토리: 해당 업무의 팀에 알림
+          const taskRepo = await prisma.taskGitHubRepository.findUnique({
+            where: { id: repository.id },
+            select: { taskId: true },
+          });
+          if (taskRepo) {
+            const task = await prisma.task.findUnique({
+              where: { id: taskRepo.taskId },
+              select: { teamId: true },
+            });
+            if (task) {
+              chatWSS.broadcastToTeam(task.teamId, {
+                type: "github_activity",
+                data: {
+                  type: "pull_request",
+                  action: action,
+                  repository: `${repository.owner}/${repository.repo}`,
+                  title: title,
+                  author: author,
+                  url: url,
+                  taskId: taskRepo.taskId,
+                },
+              });
+              console.log(`[${requestId || "PR"}] 📡 WebSocket 알림 전송: 팀 ${task.teamId}`);
+            } else {
+              console.warn(`[${requestId || "PR"}] ⚠️ 업무를 찾을 수 없음: taskId=${taskRepo.taskId}`);
+            }
+          } else {
+            console.warn(`[${requestId || "PR"}] ⚠️ TaskGitHubRepository를 찾을 수 없음: repositoryId=${repository.id}`);
+          }
+        } else {
+          // 팀 레포지토리
+          chatWSS.broadcastToTeam(repository.teamId, {
             type: "github_activity",
             data: {
               type: "pull_request",
               action: action,
               repository: `${repository.owner}/${repository.repo}`,
-              title: pr.title,
-              author: pr.user.login,
-              url: pr.html_url,
-              taskId: taskRepo.taskId,
+              title: title,
+              author: author,
+              url: url,
             },
           });
+          console.log(`[${requestId || "PR"}] 📡 WebSocket 알림 전송: 팀 ${repository.teamId}`);
         }
       } else {
-        // 팀 레포지토리
-        chatWSS.broadcastToTeam(repository.teamId, {
-          type: "github_activity",
-          data: {
-            type: "pull_request",
-            action: action,
-            repository: `${repository.owner}/${repository.repo}`,
-            title: pr.title,
-            author: pr.user.login,
-            url: pr.html_url,
-          },
-        });
+        console.warn(`[${requestId || "PR"}] ⚠️ WebSocket 서버를 찾을 수 없음`);
       }
+    } catch (wsError) {
+      console.error(`[${requestId || "PR"}] ❌ WebSocket 알림 전송 실패:`, {
+        message: wsError.message,
+        stack: wsError.stack,
+      });
+      // WebSocket 실패해도 계속 진행
     }
   } catch (error) {
-    console.error("Pull Request 이벤트 처리 오류:", error);
+    console.error(`[${requestId || "PR"}] ❌ Pull Request 이벤트 처리 오류:`, {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      code: error.code,
+    });
+    throw error; // 상위로 에러 전달
   }
 }
 
