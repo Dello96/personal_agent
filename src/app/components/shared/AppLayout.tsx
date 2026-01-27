@@ -61,6 +61,7 @@ export default function AppLayout({
       } else if (message.type === "github_activity" && message.data) {
         // GitHub 활동 알림 (실시간 업데이트를 위해 이벤트 발생)
         // GitHubActivityWidget에서 처리하도록 이벤트 발생
+        console.log("[AppLayout] GitHub 활동 이벤트 dispatch:", message.data);
         window.dispatchEvent(
           new CustomEvent("github_activity", { detail: message.data })
         );

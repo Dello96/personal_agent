@@ -728,8 +728,20 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
           )}
 
           {/* GitHub 활동 위젯 (개발팀 업무인 경우만) */}
-          {task?.isDevelopmentTask && task?.githubRepository && (
+          {task?.isDevelopmentTask && task?.githubRepository ? (
             <TaskGithubActivityWidget taskId={task.id} />
+          ) : (
+            task?.isDevelopmentTask && (
+              <div className="bg-white rounded-2xl p-6 shadow-sm">
+                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <span>🔗</span>
+                  GitHub 활동
+                </h3>
+                <p className="text-sm text-gray-500">
+                  GitHub 레포지토리가 연결되지 않았습니다.
+                </p>
+              </div>
+            )
           )}
 
           {/* 참고 링크 섹션 */}

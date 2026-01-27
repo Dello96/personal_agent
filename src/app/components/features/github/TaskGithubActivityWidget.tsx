@@ -18,14 +18,16 @@ export default function TaskGithubActivityWidget({
   const loadActivities = useCallback(async () => {
     try {
       setLoading(true);
+      console.log(`[TaskGithubActivityWidget] 활동 조회 시작: taskId=${taskId}`);
       const data = await getTaskActivities(taskId, 10);
+      console.log(`[TaskGithubActivityWidget] 활동 조회 완료: ${data.length}개`, data);
       setActivities(data);
       setError(null);
     } catch (error: any) {
+      console.error(`[TaskGithubActivityWidget] 활동 조회 실패:`, error);
       if (error.message?.includes("404")) {
         setError("연결된 레포지토리가 없습니다.");
       } else {
-        console.error("활동 조회 실패:", error);
         setError("활동 내역을 불러오는데 실패했습니다.");
       }
     } finally {
@@ -40,8 +42,16 @@ export default function TaskGithubActivityWidget({
     
     // GitHub 활동 WebSocket 이벤트 리스너
     const handleGitHubActivity = (event: CustomEvent) => {
-      // 실시간으로 활동 목록 새로고침
-      loadActivities();
+      const eventData = event.detail;
+      console.log(`[TaskGithubActivityWidget] GitHub 활동 이벤트 수신:`, eventData);
+      
+      // 이벤트의 taskId가 현재 위젯의 taskId와 일치하는 경우에만 새로고침
+      if (eventData?.taskId === taskId) {
+        console.log(`[TaskGithubActivityWidget] taskId 일치, 활동 목록 새로고침: ${taskId}`);
+        loadActivities();
+      } else {
+        console.log(`[TaskGithubActivityWidget] taskId 불일치, 무시: 이벤트=${eventData?.taskId}, 위젯=${taskId}`);
+      }
     };
     
     window.addEventListener("github_activity", handleGitHubActivity as EventListener);
@@ -50,7 +60,7 @@ export default function TaskGithubActivityWidget({
       clearInterval(interval);
       window.removeEventListener("github_activity", handleGitHubActivity as EventListener);
     };
-  }, [loadActivities]);
+  }, [loadActivities, taskId]);
 
   const getActivityIcon = (type: string, action?: string) => {
     if (type === "commit") return "💾";
