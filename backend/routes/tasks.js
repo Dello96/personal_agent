@@ -90,6 +90,13 @@ async function connectTaskGitHubRepository(
   }
 
   // TaskGitHubRepository 생성
+  // Webhook 생성이 실패한 경우 경고
+  if (!webhookId) {
+    console.warn(`⚠️ Webhook 생성 실패: webhookId가 null입니다.`);
+    console.warn(`⚠️ GitHub 레포지토리에 webhook이 생성되지 않았을 수 있습니다.`);
+    console.warn(`⚠️ 수동으로 webhook을 생성하거나, 레포지토리를 다시 연결해야 합니다.`);
+  }
+
   const repository = await prismaClient.taskGitHubRepository.create({
     data: {
       taskId,
@@ -100,6 +107,13 @@ async function connectTaskGitHubRepository(
       webhookId,
       isActive: true,
     },
+  });
+
+  console.log(`💾 레포지토리 정보 저장 완료:`, {
+    repositoryId: repository.id,
+    webhookId: repository.webhookId,
+    hasSecret: !!repository.webhookSecret,
+    secretLength: repository.webhookSecret?.length,
   });
 
   return repository;

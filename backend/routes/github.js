@@ -130,6 +130,13 @@ router.post("/webhook", async (req, res) => {
     }
 
     console.log(`[${requestId}] ✅ 레포지토리 찾음: ${isTaskRepository ? "업무별" : "팀"} 레포지토리`);
+    
+    // webhookId가 null인 경우 경고 (webhook이 생성되지 않았을 수 있음)
+    if (!repository.webhookId) {
+      console.warn(`[${requestId}] ⚠️ Webhook ID가 null입니다.`);
+      console.warn(`[${requestId}] ⚠️ 이는 webhook 생성이 실패했거나 수동으로 생성된 webhook일 수 있습니다.`);
+      console.warn(`[${requestId}] ⚠️ GitHub의 webhook secret과 DB의 secret이 일치하지 않을 수 있습니다.`);
+    }
 
     // Webhook 서명 검증 (rawBody는 위에서 이미 설정됨)
     console.log(`[${requestId}] 🔐 서명 검증 시작:`, {
