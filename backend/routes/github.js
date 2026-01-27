@@ -511,15 +511,28 @@ router.get("/task-activities/:taskId", async (req, res) => {
       return res.status(404).json({ error: "연결된 레포지토리가 없습니다." });
     }
 
+    // 같은 레포지토리(owner/repo)를 사용하는 모든 TaskGitHubRepository 찾기
+    const repositoriesWithSameRepo = await prisma.taskGitHubRepository.findMany({
+      where: {
+        owner: task.githubRepository.owner,
+        repo: task.githubRepository.repo,
+      },
+      select: { id: true },
+    });
+
+    const repositoryIds = repositoriesWithSameRepo.map((r) => r.id);
+
+    console.log(`[API] 활동 조회: taskId=${taskId}, owner=${task.githubRepository.owner}, repo=${task.githubRepository.repo}`);
+    console.log(`[API] 같은 레포지토리를 사용하는 repositoryIds:`, repositoryIds);
+
     const where = {
-      repositoryId: task.githubRepository.id,
+      repositoryId: { in: repositoryIds },
     };
 
     if (type) {
       where.type = type;
     }
 
-    console.log(`[API] 활동 조회: taskId=${taskId}, repositoryId=${task.githubRepository.id}`);
     console.log(`[API] 조회 조건:`, where);
     
     const activities = await prisma.taskGitHubActivity.findMany({
