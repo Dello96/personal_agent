@@ -604,22 +604,31 @@ async function handlePushEvent(payload, repository, isTaskRepository = false, re
     }
 
     // WebSocket으로 알림 전송
+    console.log(`[${requestId || "PUSH"}] 📡 WebSocket 알림 전송 시작`);
     try {
       const { chatWSS } = require("../server");
+      console.log(`[${requestId || "PUSH"}] 📡 WebSocket 서버 확인: ${chatWSS ? "존재" : "없음"}`);
+      
       if (chatWSS) {
         if (isTaskRepository) {
           // 업무별 레포지토리: 해당 업무의 팀에 알림
+          console.log(`[${requestId || "PUSH"}] 📡 업무별 레포지토리 처리 시작`);
           const taskRepo = await prisma.taskGitHubRepository.findUnique({
             where: { id: repository.id },
             select: { taskId: true },
           });
+          console.log(`[${requestId || "PUSH"}] 📡 TaskRepo 조회 결과:`, taskRepo ? `taskId=${taskRepo.taskId}` : "없음");
+          
           if (taskRepo) {
             const task = await prisma.task.findUnique({
               where: { id: taskRepo.taskId },
               select: { teamId: true },
             });
+            console.log(`[${requestId || "PUSH"}] 📡 Task 조회 결과:`, task ? `teamId=${task.teamId}` : "없음");
+            
             if (task) {
-              chatWSS.broadcastToTeam(task.teamId, {
+              console.log(`[${requestId || "PUSH"}] 📡 팀에 브로드캐스트 시작: teamId=${task.teamId}`);
+              await chatWSS.broadcastToTeam(task.teamId, {
                 type: "github_activity",
                 data: {
                   type: "push",
@@ -629,7 +638,7 @@ async function handlePushEvent(payload, repository, isTaskRepository = false, re
                   taskId: taskRepo.taskId,
                 },
               });
-              console.log(`[${requestId || "PUSH"}] 📡 WebSocket 알림 전송: 팀 ${task.teamId}`);
+              console.log(`[${requestId || "PUSH"}] ✅ WebSocket 알림 전송 완료: 팀 ${task.teamId}`);
             } else {
               console.warn(`[${requestId || "PUSH"}] ⚠️ 업무를 찾을 수 없음: taskId=${taskRepo.taskId}`);
             }
@@ -638,7 +647,8 @@ async function handlePushEvent(payload, repository, isTaskRepository = false, re
           }
         } else {
           // 팀 레포지토리
-          chatWSS.broadcastToTeam(repository.teamId, {
+          console.log(`[${requestId || "PUSH"}] 📡 팀 레포지토리 처리 시작: teamId=${repository.teamId}`);
+          await chatWSS.broadcastToTeam(repository.teamId, {
             type: "github_activity",
             data: {
               type: "push",
@@ -647,7 +657,7 @@ async function handlePushEvent(payload, repository, isTaskRepository = false, re
               commits: commits.length,
             },
           });
-          console.log(`[${requestId || "PUSH"}] 📡 WebSocket 알림 전송: 팀 ${repository.teamId}`);
+          console.log(`[${requestId || "PUSH"}] ✅ WebSocket 알림 전송 완료: 팀 ${repository.teamId}`);
         }
       } else {
         console.warn(`[${requestId || "PUSH"}] ⚠️ WebSocket 서버를 찾을 수 없음`);
@@ -656,9 +666,12 @@ async function handlePushEvent(payload, repository, isTaskRepository = false, re
       console.error(`[${requestId || "PUSH"}] ❌ WebSocket 알림 전송 실패:`, {
         message: wsError.message,
         stack: wsError.stack,
+        name: wsError.name,
       });
       // WebSocket 실패해도 계속 진행
     }
+    
+    console.log(`[${requestId || "PUSH"}] ✅ WebSocket 알림 전송 프로세스 완료`);
   } catch (error) {
     console.error(`[${requestId || "PUSH"}] ❌ Push 이벤트 처리 오류:`, {
       message: error.message,
@@ -668,6 +681,8 @@ async function handlePushEvent(payload, repository, isTaskRepository = false, re
     });
     throw error; // 상위로 에러 전달
   }
+  
+  console.log(`[${requestId || "PUSH"}] ✅ handlePushEvent 함수 완료`);
 }
 
 // Pull Request 이벤트 처리

@@ -409,18 +409,31 @@ class ChatWebSocketServer {
   // 특정 팀의 모든 사용자에게 메시지 전송 (외부에서 호출 가능)
   async broadcastToTeam(teamName, message) {
     try {
+      console.log(`📡 [WebSocket] 팀 브로드캐스트 시작: teamName=${teamName}, messageType=${message.type}`);
+      
       // 팀의 모든 멤버 조회
       const teamMembers = await prisma.user.findMany({
         where: { teamName },
         select: { id: true },
       });
 
+      console.log(`📡 [WebSocket] 팀 멤버 수: ${teamMembers.length}명`);
+      
       // 각 멤버에게 메시지 전송
+      let sentCount = 0;
       teamMembers.forEach((member) => {
         this.broadcastToUser(member.id, message);
+        sentCount++;
       });
+      
+      console.log(`📡 [WebSocket] 메시지 전송 완료: ${sentCount}/${teamMembers.length}명에게 전송`);
     } catch (error) {
       console.error("팀 브로드캐스트 오류:", error);
+      console.error("에러 상세:", {
+        message: error.message,
+        stack: error.stack,
+        teamName,
+      });
     }
   }
 }
