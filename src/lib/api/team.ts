@@ -1,5 +1,6 @@
 // team.ts - 팀 API 함수
-import { apiRequest } from "./users";
+import { apiRequest, getTeamMembers } from "./users";
+import type { TeamMember } from "./users";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -16,6 +17,14 @@ export interface Team {
     teamName: string | null;
   }[];
 }
+
+/**
+ * 현재 로그인한 사용자 팀의 팀원만 반환.
+ * 백엔드 GET /api/users/team-members 사용 (JWT의 팀으로 DB에서 직접 필터, 다른 팀 데이터 노출 없음).
+ */
+export const getCurrentTeamMembers = async (): Promise<TeamMember[]> => {
+  return getTeamMembers();
+};
 
 // 팀 생성
 export const createTeam = async (teamName: string): Promise<Team> => {

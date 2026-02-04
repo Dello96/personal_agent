@@ -60,10 +60,17 @@ export default function AppLayout({
         }
       } else if (message.type === "github_activity" && message.data) {
         // GitHub 활동 알림 (실시간 업데이트를 위해 이벤트 발생)
-        // GitHubActivityWidget에서 처리하도록 이벤트 발생
         window.dispatchEvent(
           new CustomEvent("github_activity", { detail: message.data })
         );
+      } else if (message.type === "figma_activity" && message.data) {
+        // Figma 활동 알림 (FigmaActivityWidget에서 구독)
+        window.dispatchEvent(
+          new CustomEvent("figma_activity", { detail: message.data })
+        );
+      } else if (message.type === "notification_update") {
+        // 알림 센터 갱신 이벤트
+        window.dispatchEvent(new CustomEvent("notification_update"));
       }
     };
 

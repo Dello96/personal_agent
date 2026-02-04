@@ -5,6 +5,8 @@ interface NotificationState {
   hasNewMessage: boolean;
   setHasNewMessage: (hasNew: boolean) => void;
   clearNewMessage: () => void;
+  unreadChatCount: number;
+  setUnreadChatCount: (count: number) => void;
   hasPendingLeaveRequest: boolean;
   setHasPendingLeaveRequest: (hasNew: boolean) => void;
   clearPendingLeaveRequest: () => void;
@@ -18,6 +20,8 @@ export const useNotificationStore = create<NotificationState>()(
       hasNewMessage: false,
       setHasNewMessage: (hasNew: boolean) => set({ hasNewMessage: hasNew }),
       clearNewMessage: () => set({ hasNewMessage: false }),
+      unreadChatCount: 0,
+      setUnreadChatCount: (count: number) => set({ unreadChatCount: count }),
       hasPendingLeaveRequest: false,
       setHasPendingLeaveRequest: (hasNew: boolean) =>
         set({ hasPendingLeaveRequest: hasNew }),

@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const prisma = require("../db/prisma");
 const authenticate = require("../middleware/auth");
+const { createNotificationsForUsers } = require("../utils/notifications");
 
 // 모든 라우트에 인증 미들웨어 적용
 router.use(authenticate);
@@ -44,7 +45,9 @@ router.get("/direct/:userId", async (req, res) => {
     const { userId: currentUserId } = req.user;
 
     if (targetUserId === currentUserId) {
-      return res.status(400).json({ error: "본인과는 개인 채팅을 할 수 없습니다." });
+      return res
+        .status(400)
+        .json({ error: "본인과는 개인 채팅을 할 수 없습니다." });
     }
 
     // 기존 개인 채팅방 찾기 (두 사용자가 모두 참여한 DIRECT 타입 채팅방)
@@ -53,25 +56,29 @@ router.get("/direct/:userId", async (req, res) => {
         type: "DIRECT",
         participants: {
           some: {
-            userId: currentUserId
-          }
-        }
+            userId: currentUserId,
+          },
+        },
       },
       include: {
         participants: {
           include: {
             user: {
-              select: { id: true, name: true, email: true, picture: true }
-            }
-          }
-        }
-      }
+              select: { id: true, name: true, email: true, picture: true },
+            },
+          },
+        },
+      },
     });
 
     // 두 사용자가 모두 참여한 채팅방 찾기
-    const existingRoom = existingRooms.find(room => {
-      const participantIds = room.participants.map(p => p.userId);
-      return participantIds.includes(currentUserId) && participantIds.includes(targetUserId) && participantIds.length === 2;
+    const existingRoom = existingRooms.find((room) => {
+      const participantIds = room.participants.map((p) => p.userId);
+      return (
+        participantIds.includes(currentUserId) &&
+        participantIds.includes(targetUserId) &&
+        participantIds.length === 2
+      );
     });
 
     if (existingRoom) {
@@ -83,21 +90,18 @@ router.get("/direct/:userId", async (req, res) => {
       data: {
         type: "DIRECT",
         participants: {
-          create: [
-            { userId: currentUserId },
-            { userId: targetUserId }
-          ]
-        }
+          create: [{ userId: currentUserId }, { userId: targetUserId }],
+        },
       },
       include: {
         participants: {
           include: {
             user: {
-              select: { id: true, name: true, email: true, picture: true }
-            }
-          }
-        }
-      }
+              select: { id: true, name: true, email: true, picture: true },
+            },
+          },
+        },
+      },
     });
 
     res.json(chatRoom);
@@ -111,7 +115,13 @@ router.get("/direct/:userId", async (req, res) => {
 router.get("/messages", async (req, res) => {
   try {
     const { teamName, userId } = req.user;
-    const { limit = 50, cursor, roomId, type = "TEAM", lastMessageId } = req.query;
+    const {
+      limit = 50,
+      cursor,
+      roomId,
+      type = "TEAM",
+      lastMessageId,
+    } = req.query;
 
     let chatRoom;
 
@@ -140,9 +150,9 @@ router.get("/messages", async (req, res) => {
           id: roomId,
           type: "DIRECT",
           participants: {
-            some: { userId }
-          }
-        }
+            some: { userId },
+          },
+        },
       });
 
       if (!chatRoom) {
@@ -265,9 +275,9 @@ router.post("/messages", async (req, res) => {
           id: roomId,
           type: "DIRECT",
           participants: {
-            some: { userId }
-          }
-        }
+            some: { userId },
+          },
+        },
       });
 
       if (!chatRoom) {
@@ -295,6 +305,63 @@ router.post("/messages", async (req, res) => {
         },
       },
     });
+
+    // 팀 채팅일 때 팀원에게 알림 생성 (본인 제외)
+    if (type === "TEAM" && teamName) {
+      try {
+        const members = await prisma.user.findMany({
+          where: { teamName },
+          select: { id: true },
+        });
+        const targets = members.map((m) => m.id).filter((id) => id !== userId);
+
+        await createNotificationsForUsers(prisma, targets, {
+          type: "chat",
+          title: "새 팀 채팅 메시지",
+          message: message.content,
+          link: `/chat?roomId=${chatRoom.id}&type=TEAM`,
+          chatRoomId: chatRoom.id,
+          chatType: "TEAM",
+        });
+
+        const chatWSS = require("../server").chatWSS;
+        if (chatWSS) {
+          targets.forEach((targetId) => {
+            chatWSS.broadcastToUser(targetId, { type: "notification_update" });
+          });
+        }
+      } catch (notifyError) {
+        console.error("채팅 알림 생성 오류:", notifyError);
+      }
+    } else if (type === "DIRECT" && chatRoom) {
+      try {
+        const participants = await prisma.chatRoomParticipant.findMany({
+          where: { chatRoomId: chatRoom.id },
+          select: { userId: true },
+        });
+        const targets = participants
+          .map((p) => p.userId)
+          .filter((id) => id !== userId);
+
+        await createNotificationsForUsers(prisma, targets, {
+          type: "chat",
+          title: "새 개인 채팅 메시지",
+          message: message.content,
+          link: `/chat?roomId=${chatRoom.id}&type=DIRECT&userId=${userId}`,
+          chatRoomId: chatRoom.id,
+          chatType: "DIRECT",
+        });
+
+        const chatWSS = require("../server").chatWSS;
+        if (chatWSS) {
+          targets.forEach((targetId) => {
+            chatWSS.broadcastToUser(targetId, { type: "notification_update" });
+          });
+        }
+      } catch (notifyError) {
+        console.error("개인 채팅 알림 생성 오류:", notifyError);
+      }
+    }
 
     res.status(201).json(message);
   } catch (error) {
@@ -332,7 +399,9 @@ router.delete("/messages/:id", async (req, res) => {
 
     // 본인이 보낸 메시지인지 확인
     if (message.senderId !== userId) {
-      return res.status(403).json({ error: "본인이 보낸 메시지만 삭제할 수 있습니다." });
+      return res
+        .status(403)
+        .json({ error: "본인이 보낸 메시지만 삭제할 수 있습니다." });
     }
 
     // 메시지 삭제

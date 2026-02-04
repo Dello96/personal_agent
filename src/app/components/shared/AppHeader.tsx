@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
 import { getRoleLabel } from "@/lib/utils/roleUtils";
+import NotificationCenter from "./NotificationCenter";
 
 export interface AppHeaderProps {
   showBackButton?: boolean;
@@ -68,6 +69,9 @@ export default function AppHeader({
             {getRoleLabel(user.role)}
           </span>
         )}
+
+        {/* 알림 센터 */}
+        <NotificationCenter />
 
         {/* 마이페이지 */}
         <button

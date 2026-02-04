@@ -2,6 +2,7 @@
 
 import AppLayout from "@/app/components/shared/AppLayout";
 import GithubRepositorySettings from "@/app/components/features/github/GithubRepositorySettings";
+import FigmaConnectionSettings from "@/app/components/features/figma/FigmaConnectionSettings";
 import { useAuthStore } from "@/app/stores/authStore";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -35,6 +36,7 @@ export default function TeamManagementPage() {
     >
       <div className="space-y-6">
         <GithubRepositorySettings />
+        <FigmaConnectionSettings />
       </div>
     </AppLayout>
   );

@@ -8,11 +8,18 @@ export default function GithubActivityWidget() {
   const [activities, setActivities] = useState<GitHubActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState<
+    "all" | "commit" | "push" | "pull_request"
+  >("all");
 
   const loadActivities = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getActivities(10);
+      const data = await getActivities(
+        50,
+        typeFilter === "all" ? undefined : typeFilter
+      );
       setActivities(data);
       setError(null);
     } catch (error: any) {
@@ -25,24 +32,30 @@ export default function GithubActivityWidget() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [typeFilter]);
 
   useEffect(() => {
     loadActivities();
     // 30초마다 새로고침
     const interval = setInterval(loadActivities, 30000);
-    
+
     // GitHub 활동 WebSocket 이벤트 리스너
     const handleGitHubActivity = (event: CustomEvent) => {
       // 실시간으로 활동 목록 새로고침
       loadActivities();
     };
-    
-    window.addEventListener("github_activity", handleGitHubActivity as EventListener);
-    
+
+    window.addEventListener(
+      "github_activity",
+      handleGitHubActivity as EventListener
+    );
+
     return () => {
       clearInterval(interval);
-      window.removeEventListener("github_activity", handleGitHubActivity as EventListener);
+      window.removeEventListener(
+        "github_activity",
+        handleGitHubActivity as EventListener
+      );
     };
   }, [loadActivities]);
 
@@ -92,7 +105,16 @@ export default function GithubActivityWidget() {
     );
   }
 
-  if (activities.length === 0) {
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredActivities = normalizedSearch
+    ? activities.filter((a) => {
+        const target =
+          `${a.message} ${a.author} ${a.branch ?? ""}`.toLowerCase();
+        return target.includes(normalizedSearch);
+      })
+    : activities;
+
+  if (filteredActivities.length === 0) {
     return (
       <div className="bg-white rounded-2xl p-6 shadow-sm">
         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
@@ -111,6 +133,29 @@ export default function GithubActivityWidget() {
           <span>🔗</span>
           GitHub 활동
         </h3>
+      </div>
+
+      <div className="flex items-center gap-2 mb-4">
+        <input
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="검색 (메시지/작성자/브랜치)"
+          className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#7F55B1]"
+        />
+        <select
+          value={typeFilter}
+          onChange={(e) =>
+            setTypeFilter(
+              e.target.value as "all" | "commit" | "push" | "pull_request"
+            )
+          }
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+        >
+          <option value="all">전체</option>
+          <option value="commit">Commit</option>
+          <option value="push">Push</option>
+          <option value="pull_request">PR</option>
+        </select>
         <button
           onClick={loadActivities}
           className="text-sm text-[#7F55B1] hover:text-[#6B479A] font-medium"
@@ -120,7 +165,7 @@ export default function GithubActivityWidget() {
       </div>
 
       <div className="space-y-3 max-h-[400px] overflow-y-auto scrollbar-thin">
-        {activities.map((activity) => (
+        {filteredActivities.map((activity) => (
           <a
             key={activity.id}
             href={activity.url}
@@ -143,8 +188,8 @@ export default function GithubActivityWidget() {
                     {activity.type === "pull_request"
                       ? `PR ${activity.action}`
                       : activity.type === "push"
-                      ? "Push"
-                      : "Commit"}
+                        ? "Push"
+                        : "Commit"}
                   </span>
                   {activity.branch && (
                     <span className="text-xs text-gray-500">

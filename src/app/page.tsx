@@ -4,11 +4,13 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
 import { getTasks, Task } from "@/lib/api/tasks";
-import { getTeamMembers, TeamMember } from "@/lib/api/users";
+import { TeamMember } from "@/lib/api/users";
+import { getCurrentTeamMembers } from "@/lib/api/team";
 import Image from "next/image";
 import AppLayout from "@/app/components/shared/AppLayout";
 import { getRoleLabel } from "@/lib/utils/roleUtils";
 import GithubActivityWidget from "@/app/components/features/github/GithubActivityWidget";
+import FigmaActivityWidget from "@/app/components/features/figma/FigmaActivityWidget";
 
 function HomeContent() {
   const leftMenus = ["진행중인 업무", "일정", "채팅"];
@@ -50,9 +52,13 @@ function HomeContent() {
   const [activeMenu, setActiveMenu] = useState("진행중인 업무");
 
   // 업무 상태 탭 (PENDING 제거 - 업무는 생성 시 바로 NOW로 시작)
-  const [activeTab, setActiveTab] = useState<
-    "NOW" | "REVIEW" | "COMPLETED"
-  >("NOW");
+  const [activeTab, setActiveTab] = useState<"NOW" | "REVIEW" | "COMPLETED">(
+    "NOW"
+  );
+  const [taskSearch, setTaskSearch] = useState("");
+  const [taskSort, setTaskSort] = useState<
+    "new" | "old" | "due_asc" | "due_desc" | "priority"
+  >("new");
 
   const goToTeamJoin = () => {
     router.push("/team/join");
@@ -114,7 +120,7 @@ function HomeContent() {
     fetchTasks();
   }, [isLoggedIn, user?.teamName]);
 
-  // 팀원 목록 조회
+  // 팀원 목록 조회 (Group 칸) — GET /api/users/team-members (현재 로그인 팀만 반환)
   useEffect(() => {
     const fetchTeamMembers = async () => {
       if (!isLoggedIn || !user?.teamName) {
@@ -124,12 +130,12 @@ function HomeContent() {
 
       try {
         setMembersLoading(true);
-        const data = await getTeamMembers();
+        const data = await getCurrentTeamMembers();
         setTeamMembers(data);
       } catch (error) {
         setTeamMembers([]);
         if (process.env.NODE_ENV === "development") {
-          console.error("팀원 조회 실패:", error);
+          console.error("[Group] 팀원 조회 실패:", error);
         }
       } finally {
         setMembersLoading(false);
@@ -220,12 +226,57 @@ function HomeContent() {
   const completedTasks = tasks.filter((t) => t.status === "COMPLETED"); // 완료
   const reviewTasks = tasks.filter((t) => t.status === "REVIEW"); //리뷰
   const endingTasks = tasks.filter((t) => t.status === "ENDING"); //종료
-  const displayTasks =
+  const baseTasks =
     activeTab === "NOW"
       ? nowTasks
       : activeTab === "REVIEW"
         ? reviewTasks
         : completedTasks;
+  const normalizedSearch = taskSearch.trim().toLowerCase();
+  const searchedTasks = normalizedSearch
+    ? baseTasks.filter((task) => {
+        const assignee = task.assignee?.name || "";
+        const assigner = task.assigner?.name || "";
+        const participants =
+          task.participants?.map((p) => p.user?.name || "").join(" ") || "";
+        const target =
+          `${task.title} ${task.description ?? ""} ${assignee} ${assigner} ${participants}`.toLowerCase();
+        return target.includes(normalizedSearch);
+      })
+    : baseTasks;
+
+  const priorityRank: Record<string, number> = {
+    URGENT: 4,
+    HIGH: 3,
+    MEDIUM: 2,
+    LOW: 1,
+  };
+  const displayTasks = [...searchedTasks].sort((a, b) => {
+    if (taskSort === "new") {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    }
+    if (taskSort === "old") {
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    }
+    if (taskSort === "due_asc") {
+      const aTime = a.dueDate
+        ? new Date(a.dueDate).getTime()
+        : Number.MAX_SAFE_INTEGER;
+      const bTime = b.dueDate
+        ? new Date(b.dueDate).getTime()
+        : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    }
+    if (taskSort === "due_desc") {
+      const aTime = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+      const bTime = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+      return bTime - aTime;
+    }
+    if (taskSort === "priority") {
+      return (priorityRank[b.priority] || 0) - (priorityRank[a.priority] || 0);
+    }
+    return 0;
+  });
 
   // 로그인 안 된 경우
   if (!hasHydrated) {
@@ -447,6 +498,34 @@ function HomeContent() {
 
             {/* 업무 목록 */}
             <div className="p-6 min-h-[400px] max-h-[500px] overflow-auto">
+              <div className="flex items-center gap-3 mb-4">
+                <input
+                  value={taskSearch}
+                  onChange={(e) => setTaskSearch(e.target.value)}
+                  placeholder="업무 검색 (제목/설명/담당자)"
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#7F55B1]"
+                />
+                <select
+                  value={taskSort}
+                  onChange={(e) =>
+                    setTaskSort(
+                      e.target.value as
+                        | "new"
+                        | "old"
+                        | "due_asc"
+                        | "due_desc"
+                        | "priority"
+                    )
+                  }
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                >
+                  <option value="new">최신순</option>
+                  <option value="old">오래된순</option>
+                  <option value="due_asc">마감 임박순</option>
+                  <option value="due_desc">마감 느린순</option>
+                  <option value="priority">우선순위</option>
+                </select>
+              </div>
               {tasksLoading ? (
                 <div className="flex items-center justify-center h-40">
                   <div className="text-gray-400">로딩 중...</div>
@@ -631,8 +710,11 @@ function HomeContent() {
             )}
           </div>
 
-          {/* GitHub 활동 위젯 */}
-          <GithubActivityWidget />
+          {/* 개발팀: GitHub 활동 위젯만 표시 */}
+          {user?.teamName === "개발팀" && <GithubActivityWidget />}
+
+          {/* 디자인팀: Figma 활동 위젯만 표시 */}
+          {user?.teamName === "디자인팀" && <FigmaActivityWidget />}
         </div>
       </div>
 

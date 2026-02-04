@@ -25,6 +25,7 @@ model User {
   approvedCalendarEvents  CalendarEvent[]   @relation("CalendarEventApprover")
   messages                Message[]         @relation("MessageSender")
   chatRoomParticipants    ChatRoomParticipant[] @relation("ChatRoomParticipant")
+  notifications           Notification[]
 }
 
 model Team {
@@ -38,6 +39,7 @@ model Team {
   calendarEvents CalendarEvent[]
   chatRoom       ChatRoom?
   githubRepository GitHubRepository?
+  figmaConnection FigmaTeamConnection?
 }
 
 model Task {
@@ -278,4 +280,60 @@ model TaskGitHubActivity {
 
   @@index([repositoryId, createdAt])
   @@index([type, createdAt])
+}
+
+// Figma 웹훅: 팀 단위 연결 (팀당 1개 또는 웹훅별로 확장 가능)
+model FigmaTeamConnection {
+  id              String   @id @default(uuid())
+  teamId          String   @unique
+  figmaWebhookId  Int?     // Figma API가 반환한 webhook id
+  passcode        String   // 웹훅 수신 시 검증용
+  accessToken     String   // Figma Personal Access Token (웹훅 생성/관리용)
+  context         String   // "team" | "project" | "file"
+  contextId      String   // Figma team id / project id / file key
+  eventType      String   // FILE_UPDATE, FILE_COMMENT, FILE_VERSION_UPDATE 등
+  description     String?  // 웹훅 설명 (선택)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  team     Team          @relation(fields: [teamId], references: [teamName], onDelete: Cascade)
+  activities FigmaActivity[]
+
+  @@index([teamId])
+}
+
+model FigmaActivity {
+  id           String   @id @default(uuid())
+  connectionId String
+  eventType    String   // PING, FILE_UPDATE, FILE_COMMENT 등
+  fileKey      String?
+  fileName     String?
+  message      String?  // 요약 (예: "파일 업데이트", "댓글 추가")
+  payload      Json?    // 원본 페이로드 일부 저장 (선택)
+  createdAt    DateTime @default(now())
+
+  connection FigmaTeamConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  message   String?
+  link      String?
+  chatRoomId String?
+  chatType   String? // TEAM | DIRECT
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, isRead, createdAt])
+  @@index([userId, chatRoomId, isRead, createdAt])
 }

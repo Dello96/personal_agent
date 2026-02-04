@@ -34,6 +34,12 @@ app.get("/", function (req, res) {
 
 app.use(cors());
 app.use(express.static(__dirname));
+
+// GitHub webhook 경로는 raw body가 필요하므로 JSON 파싱 전에 처리
+// webhook 경로에만 express.raw() 적용
+app.use("/api/github/webhook", express.raw({ type: "application/json" }));
+
+// 나머지 경로는 JSON 파싱
 app.use(express.json());
 
 const tasksRoutes = require("./routes/tasks");
@@ -41,12 +47,16 @@ const teamRoutes = require("./routes/team");
 const usersRoutes = require("./routes/users");
 const authRoutes = require("./routes/auth");
 const githubRoutes = require("./routes/github");
+const figmaRoutes = require("./routes/figma");
+const notificationRoutes = require("./routes/notifications");
 
 app.use("/api/tasks", tasksRoutes);
 app.use("/api/team", teamRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/github", githubRoutes);
+app.use("/api/figma", figmaRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 const uploadRoutes = require("./routes/upload");
 app.use("/api/upload", uploadRoutes);
@@ -206,7 +216,8 @@ app.get("/auth/kakao/callback", async (req, res) => {
   }
 
   try {
-    const KAKAO_REDIRECT_URI = "http://localhost:8080/auth/kakao/callback";
+    // Kakao에 보낼 redirect_uri는 /auth/kakao 진입 시 사용한 값과 동일해야 함 (BACKEND_URL 사용)
+    const KAKAO_REDIRECT_URI = `${BACKEND_URL}/auth/kakao/callback`;
 
     // 1. Kakao Access Token 받기
     const tokenResponse = await axios.post(

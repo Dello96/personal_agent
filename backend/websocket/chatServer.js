@@ -1,6 +1,7 @@
 const { WebSocketServer } = require("ws");
 const jwt = require("jsonwebtoken");
 const prisma = require("../db/prisma");
+const { createNotificationsForUsers } = require("../utils/notifications");
 
 // 채팅방별 연결된 클라이언트 관리
 const chatRooms = new Map(); // roomId -> Set<WebSocket>
@@ -10,11 +11,11 @@ const userConnections = new Map(); // userId -> Set<WebSocket>
 
 class ChatWebSocketServer {
   constructor(server) {
-    this.wss = new WebSocketServer({ 
+    this.wss = new WebSocketServer({
       server,
-      path: "/ws/chat"
+      path: "/ws/chat",
     });
-    
+
     this.setup();
   }
 
@@ -28,7 +29,7 @@ class ChatWebSocketServer {
       }
 
       console.log(`✅ WebSocket 연결: ${user.name} (${user.userId})`);
-      
+
       // 연결 정보 저장
       this.addConnection(user.userId, ws);
 
@@ -39,10 +40,12 @@ class ChatWebSocketServer {
           await this.handleMessage(ws, user, message);
         } catch (error) {
           console.error("메시지 처리 오류:", error);
-          ws.send(JSON.stringify({
-            type: "error",
-            message: "메시지 처리에 실패했습니다."
-          }));
+          ws.send(
+            JSON.stringify({
+              type: "error",
+              message: "메시지 처리에 실패했습니다.",
+            })
+          );
         }
       });
 
@@ -59,10 +62,12 @@ class ChatWebSocketServer {
       });
 
       // 연결 성공 알림
-      ws.send(JSON.stringify({
-        type: "connected",
-        message: "WebSocket 연결이 성공했습니다."
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "connected",
+          message: "WebSocket 연결이 성공했습니다.",
+        })
+      );
     });
   }
 
@@ -71,7 +76,7 @@ class ChatWebSocketServer {
     try {
       // URL에서 토큰 추출 (ws://localhost:8080/ws/chat?token=xxx)
       let token = null;
-      
+
       // req.url에서 직접 파싱
       if (req.url) {
         const urlMatch = req.url.match(/[?&]token=([^&]+)/);
@@ -87,10 +92,12 @@ class ChatWebSocketServer {
 
       if (!token) {
         console.error("❌ WebSocket 인증 실패: 토큰이 없습니다.");
-        ws.send(JSON.stringify({
-          type: "error",
-          message: "인증 토큰이 필요합니다."
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "인증 토큰이 필요합니다.",
+          })
+        );
         return null;
       }
 
@@ -100,15 +107,23 @@ class ChatWebSocketServer {
       // 사용자 정보 조회
       const user = await prisma.user.findUnique({
         where: { id: decoded.userId },
-        select: { id: true, email: true, name: true, role: true, teamName: true },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          teamName: true,
+        },
       });
 
       if (!user) {
         console.error("❌ WebSocket 인증 실패: 사용자를 찾을 수 없습니다.");
-        ws.send(JSON.stringify({
-          type: "error",
-          message: "사용자를 찾을 수 없습니다."
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "사용자를 찾을 수 없습니다.",
+          })
+        );
         return null;
       }
 
@@ -123,10 +138,12 @@ class ChatWebSocketServer {
     } catch (error) {
       console.error("❌ WebSocket 인증 오류:", error.message);
       try {
-        ws.send(JSON.stringify({
-          type: "error",
-          message: `인증에 실패했습니다: ${error.message}`
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: `인증에 실패했습니다: ${error.message}`,
+          })
+        );
       } catch (sendError) {
         console.error("에러 메시지 전송 실패:", sendError);
       }
@@ -185,22 +202,24 @@ class ChatWebSocketServer {
         // 채팅방 참여
         await this.handleJoin(ws, user, message);
         break;
-      
+
       case "leave":
         // 채팅방 나가기
         await this.handleLeave(ws, user, message);
         break;
-      
+
       case "send":
         // 메시지 전송
         await this.handleSend(ws, user, message);
         break;
-      
+
       default:
-        ws.send(JSON.stringify({
-          type: "error",
-          message: "알 수 없는 메시지 타입입니다."
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "알 수 없는 메시지 타입입니다.",
+          })
+        );
     }
   }
 
@@ -212,10 +231,12 @@ class ChatWebSocketServer {
     let chatRoom;
     if (roomType === "TEAM") {
       if (!user.teamName) {
-        ws.send(JSON.stringify({
-          type: "error",
-          message: "팀에 속해있지 않습니다."
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "팀에 속해있지 않습니다.",
+          })
+        );
         return;
       }
 
@@ -234,10 +255,12 @@ class ChatWebSocketServer {
       }
     } else if (roomType === "DIRECT") {
       if (!roomId) {
-        ws.send(JSON.stringify({
-          type: "error",
-          message: "개인 채팅방 ID가 필요합니다."
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "개인 채팅방 ID가 필요합니다.",
+          })
+        );
         return;
       }
 
@@ -246,34 +269,40 @@ class ChatWebSocketServer {
           id: roomId,
           type: "DIRECT",
           participants: {
-            some: { userId: user.userId }
-          }
-        }
+            some: { userId: user.userId },
+          },
+        },
       });
 
       if (!chatRoom) {
-        ws.send(JSON.stringify({
-          type: "error",
-          message: "권한이 없습니다."
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "권한이 없습니다.",
+          })
+        );
         return;
       }
     } else {
-      ws.send(JSON.stringify({
-        type: "error",
-        message: "잘못된 채팅방 타입입니다."
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "error",
+          message: "잘못된 채팅방 타입입니다.",
+        })
+      );
       return;
     }
 
     // 채팅방 참여
     this.joinRoom(chatRoom.id, ws);
 
-    ws.send(JSON.stringify({
-      type: "joined",
-      roomId: chatRoom.id,
-      message: "채팅방에 참여했습니다."
-    }));
+    ws.send(
+      JSON.stringify({
+        type: "joined",
+        roomId: chatRoom.id,
+        message: "채팅방에 참여했습니다.",
+      })
+    );
   }
 
   // 채팅방 나가기
@@ -289,10 +318,12 @@ class ChatWebSocketServer {
     const { content, roomId, roomType } = message;
 
     if (!content || !content.trim()) {
-      ws.send(JSON.stringify({
-        type: "error",
-        message: "메시지 내용을 입력해주세요."
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "error",
+          message: "메시지 내용을 입력해주세요.",
+        })
+      );
       return;
     }
 
@@ -300,10 +331,12 @@ class ChatWebSocketServer {
 
     if (roomType === "TEAM") {
       if (!user.teamName) {
-        ws.send(JSON.stringify({
-          type: "error",
-          message: "팀에 속해있지 않습니다."
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "팀에 속해있지 않습니다.",
+          })
+        );
         return;
       }
 
@@ -325,23 +358,27 @@ class ChatWebSocketServer {
           id: roomId,
           type: "DIRECT",
           participants: {
-            some: { userId: user.userId }
-          }
-        }
+            some: { userId: user.userId },
+          },
+        },
       });
 
       if (!chatRoom) {
-        ws.send(JSON.stringify({
-          type: "error",
-          message: "권한이 없습니다."
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "권한이 없습니다.",
+          })
+        );
         return;
       }
     } else {
-      ws.send(JSON.stringify({
-        type: "error",
-        message: "잘못된 요청입니다."
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "error",
+          message: "잘못된 요청입니다.",
+        })
+      );
       return;
     }
 
@@ -364,6 +401,55 @@ class ChatWebSocketServer {
       },
     });
 
+    // 알림 생성 (팀/개인 채팅 분기)
+    try {
+      if (roomType === "TEAM" && chatRoom.teamId) {
+        const members = await prisma.user.findMany({
+          where: { teamName: chatRoom.teamId },
+          select: { id: true },
+        });
+        const targets = members
+          .map((m) => m.id)
+          .filter((id) => id !== user.userId);
+
+        await createNotificationsForUsers(prisma, targets, {
+          type: "chat",
+          title: "새 팀 채팅 메시지",
+          message: savedMessage.content,
+          link: `/chat?roomId=${chatRoom.id}&type=TEAM`,
+          chatRoomId: chatRoom.id,
+          chatType: "TEAM",
+        });
+
+        targets.forEach((targetId) => {
+          this.broadcastToUser(targetId, { type: "notification_update" });
+        });
+      } else if (roomType === "DIRECT") {
+        const participants = await prisma.chatRoomParticipant.findMany({
+          where: { chatRoomId: chatRoom.id },
+          select: { userId: true },
+        });
+        const targets = participants
+          .map((p) => p.userId)
+          .filter((id) => id !== user.userId);
+
+        await createNotificationsForUsers(prisma, targets, {
+          type: "chat",
+          title: "새 개인 채팅 메시지",
+          message: savedMessage.content,
+          link: `/chat?roomId=${chatRoom.id}&type=DIRECT&userId=${user.userId}`,
+          chatRoomId: chatRoom.id,
+          chatType: "DIRECT",
+        });
+
+        targets.forEach((targetId) => {
+          this.broadcastToUser(targetId, { type: "notification_update" });
+        });
+      }
+    } catch (notifyError) {
+      console.error("채팅 알림 생성 오류:", notifyError);
+    }
+
     // 채팅방에 참여한 모든 클라이언트에게 브로드캐스트
     const clients = chatRooms.get(chatRoom.id) || new Set();
     const messageData = {
@@ -372,16 +458,19 @@ class ChatWebSocketServer {
     };
 
     clients.forEach((client) => {
-      if (client.readyState === 1) { // WebSocket.OPEN
+      if (client.readyState === 1) {
+        // WebSocket.OPEN
         client.send(JSON.stringify(messageData));
       }
     });
 
     // 전송자에게도 확인 메시지
-    ws.send(JSON.stringify({
-      type: "message_sent",
-      messageId: savedMessage.id,
-    }));
+    ws.send(
+      JSON.stringify({
+        type: "message_sent",
+        messageId: savedMessage.id,
+      })
+    );
   }
 
   // 특정 채팅방에 메시지 브로드캐스트 (외부에서 호출 가능)
@@ -409,18 +498,35 @@ class ChatWebSocketServer {
   // 특정 팀의 모든 사용자에게 메시지 전송 (외부에서 호출 가능)
   async broadcastToTeam(teamName, message) {
     try {
+      console.log(
+        `📡 [WebSocket] 팀 브로드캐스트 시작: teamName=${teamName}, messageType=${message.type}`
+      );
+
       // 팀의 모든 멤버 조회
       const teamMembers = await prisma.user.findMany({
         where: { teamName },
         select: { id: true },
       });
 
+      console.log(`📡 [WebSocket] 팀 멤버 수: ${teamMembers.length}명`);
+
       // 각 멤버에게 메시지 전송
+      let sentCount = 0;
       teamMembers.forEach((member) => {
         this.broadcastToUser(member.id, message);
+        sentCount++;
       });
+
+      console.log(
+        `📡 [WebSocket] 메시지 전송 완료: ${sentCount}/${teamMembers.length}명에게 전송`
+      );
     } catch (error) {
       console.error("팀 브로드캐스트 오류:", error);
+      console.error("에러 상세:", {
+        message: error.message,
+        stack: error.stack,
+        teamName,
+      });
     }
   }
 }

@@ -29,6 +29,7 @@ async function connectTaskGitHubRepository(
 
   // Webhook secret 생성
   const webhookSecret = crypto.randomBytes(32).toString("hex");
+  console.log(`🔐 Webhook Secret 생성: ${webhookSecret.substring(0, 10)}... (길이: ${webhookSecret.length})`);
 
   // Webhook URL (팀 레포지토리와 동일한 엔드포인트 사용)
   const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8080";
@@ -37,7 +38,26 @@ async function connectTaskGitHubRepository(
   // GitHub에 Webhook 생성
   let webhookId = null;
   try {
-    console.log(`Webhook 생성 시도: ${owner}/${repo} -> ${webhookUrl}`);
+    console.log(`📤 Webhook 생성 시도: ${owner}/${repo} -> ${webhookUrl}`);
+    console.log(`🔐 사용할 Secret: ${webhookSecret.substring(0, 10)}... (길이: ${webhookSecret.length})`);
+    
+    // 기존 webhook이 있는지 확인
+    try {
+      const existingWebhooks = await octokit.repos.listWebhooks({ owner, repo });
+      if (existingWebhooks.data && existingWebhooks.data.length > 0) {
+        console.log(`⚠️ 기존 Webhook 발견: ${existingWebhooks.data.length}개`);
+        // 기존 webhook 삭제
+        for (const hook of existingWebhooks.data) {
+          if (hook.config.url === webhookUrl) {
+            console.log(`🗑️ 기존 Webhook 삭제: ID=${hook.id}`);
+            await octokit.repos.deleteWebhook({ owner, repo, hook_id: hook.id });
+          }
+        }
+      }
+    } catch (listError) {
+      console.log(`ℹ️ 기존 Webhook 확인 실패 (무시): ${listError.message}`);
+    }
+    
     const webhookResponse = await octokit.repos.createWebhook({
       owner,
       repo,
@@ -53,6 +73,8 @@ async function connectTaskGitHubRepository(
     });
     webhookId = webhookResponse.data.id;
     console.log(`✅ Webhook 생성 성공: ID=${webhookId}`);
+    console.log(`🔐 GitHub에 전달된 Secret: ${webhookSecret.substring(0, 10)}... (길이: ${webhookSecret.length})`);
+    console.log(`💾 DB에 저장할 Secret: ${webhookSecret.substring(0, 10)}... (길이: ${webhookSecret.length})`);
   } catch (webhookError) {
     console.error("❌ Webhook 생성 오류:", {
       message: webhookError.message,
@@ -61,12 +83,20 @@ async function connectTaskGitHubRepository(
       owner,
       repo,
       webhookUrl,
+      secretLength: webhookSecret.length,
     });
     // Webhook 생성 실패해도 레포지토리 연결은 계속 진행
     // 사용자에게는 나중에 수동으로 Webhook을 생성하도록 안내할 수 있음
   }
 
   // TaskGitHubRepository 생성
+  // Webhook 생성이 실패한 경우 경고
+  if (!webhookId) {
+    console.warn(`⚠️ Webhook 생성 실패: webhookId가 null입니다.`);
+    console.warn(`⚠️ GitHub 레포지토리에 webhook이 생성되지 않았을 수 있습니다.`);
+    console.warn(`⚠️ 수동으로 webhook을 생성하거나, 레포지토리를 다시 연결해야 합니다.`);
+  }
+
   const repository = await prismaClient.taskGitHubRepository.create({
     data: {
       taskId,
@@ -77,6 +107,13 @@ async function connectTaskGitHubRepository(
       webhookId,
       isActive: true,
     },
+  });
+
+  console.log(`💾 레포지토리 정보 저장 완료:`, {
+    repositoryId: repository.id,
+    webhookId: repository.webhookId,
+    hasSecret: !!repository.webhookSecret,
+    secretLength: repository.webhookSecret?.length,
   });
 
   return repository;
