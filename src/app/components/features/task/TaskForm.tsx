@@ -4,7 +4,8 @@
 
 import { useEffect, useState } from "react";
 import { createTask } from "@/lib/api/tasks";
-import { getTeamMembers, TeamMember } from "@/lib/api/users";
+import { TeamMember } from "@/lib/api/users";
+import { getCurrentTeamMembers } from "@/lib/api/team";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
 import { uploadImage, uploadMultipleImages } from "@/lib/api/upload";
@@ -156,7 +157,7 @@ export default function TaskForm() {
   useEffect(() => {
     const fetchTeamMembers = async () => {
       try {
-        const members = await getTeamMembers();
+        const members = await getCurrentTeamMembers();
         setTeamMembers(members);
       } catch (error) {
         console.error("팀원 목록 조회 실패:", error);
@@ -182,6 +183,7 @@ export default function TaskForm() {
       if (selectedImages.length > 0) {
         imageUrls = await uploadImages();
       }
+      const isDevTeam = user?.teamName === "개발팀";
       await createTask({
         title,
         description: description || undefined,
@@ -190,11 +192,15 @@ export default function TaskForm() {
         dueDate: dueDate || undefined,
         participantIds,
         referenceImageUrls: imageUrls,
-        isDevelopmentTask,
-        githubOwner: isDevelopmentTask && githubOwner ? githubOwner : undefined,
-        githubRepo: isDevelopmentTask && githubRepo ? githubRepo : undefined,
+        isDevelopmentTask: isDevTeam ? isDevelopmentTask : false,
+        githubOwner:
+          isDevTeam && isDevelopmentTask && githubOwner
+            ? githubOwner
+            : undefined,
+        githubRepo:
+          isDevTeam && isDevelopmentTask && githubRepo ? githubRepo : undefined,
         githubAccessToken:
-          isDevelopmentTask && githubAccessToken
+          isDevTeam && isDevelopmentTask && githubAccessToken
             ? githubAccessToken
             : undefined,
       });
@@ -573,67 +579,71 @@ export default function TaskForm() {
               />
             </div>
 
-            {/* 개발팀 업무 체크박스 */}
-            <div>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isDevelopmentTask}
-                  onChange={(e) => setIsDevelopmentTask(e.target.checked)}
-                  className="w-5 h-5 text-[#7F55B1] border-gray-300 rounded focus:ring-[#7F55B1]"
-                />
-                <span className="text-sm font-semibold text-gray-700">
-                  개발팀 업무 (GitHub 레포지토리 연결)
-                </span>
-              </label>
-            </div>
-
-            {/* GitHub 레포지토리 정보 (개발팀 업무인 경우만 표시) */}
-            {isDevelopmentTask && (
-              <div className="space-y-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+            {/* 개발팀에만 GitHub 레포지토리 연결 노출 */}
+            {user?.teamName === "개발팀" && (
+              <>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    GitHub Username 또는 Organization
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isDevelopmentTask}
+                      onChange={(e) => setIsDevelopmentTask(e.target.checked)}
+                      className="w-5 h-5 text-[#7F55B1] border-gray-300 rounded focus:ring-[#7F55B1]"
+                    />
+                    <span className="text-sm font-semibold text-gray-700">
+                      개발팀 업무 (GitHub 레포지토리 연결)
+                    </span>
                   </label>
-                  <input
-                    type="text"
-                    value={githubOwner}
-                    onChange={(e) => setGithubOwner(e.target.value)}
-                    placeholder="예: octocat 또는 my-org"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all"
-                  />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Repository Name
-                  </label>
-                  <input
-                    type="text"
-                    value={githubRepo}
-                    onChange={(e) => setGithubRepo(e.target.value)}
-                    placeholder="예: my-repo"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all"
-                  />
-                </div>
+                {/* GitHub 레포지토리 정보 (개발팀 업무인 경우만 표시) */}
+                {isDevelopmentTask && (
+                  <div className="space-y-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        GitHub Username 또는 Organization
+                      </label>
+                      <input
+                        type="text"
+                        value={githubOwner}
+                        onChange={(e) => setGithubOwner(e.target.value)}
+                        placeholder="예: octocat 또는 my-org"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    GitHub Personal Access Token
-                  </label>
-                  <input
-                    type="password"
-                    value={githubAccessToken}
-                    onChange={(e) => setGithubAccessToken(e.target.value)}
-                    placeholder="ghp_xxxxxxxxxxxx"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    GitHub Settings → Developer settings → Personal access
-                    tokens에서 생성하세요. (repo 권한 필요)
-                  </p>
-                </div>
-              </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Repository Name
+                      </label>
+                      <input
+                        type="text"
+                        value={githubRepo}
+                        onChange={(e) => setGithubRepo(e.target.value)}
+                        placeholder="예: my-repo"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        GitHub Personal Access Token
+                      </label>
+                      <input
+                        type="password"
+                        value={githubAccessToken}
+                        onChange={(e) => setGithubAccessToken(e.target.value)}
+                        placeholder="ghp_xxxxxxxxxxxx"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        GitHub Settings → Developer settings → Personal access
+                        tokens에서 생성하세요. (repo 권한 필요)
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {/* 업무 설명 */}

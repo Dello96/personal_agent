@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
 import { useNotificationStore } from "@/app/stores/notificationStore";
+import { getNotifications } from "@/lib/api/notifications";
 
 export type SidebarVariant = "default" | "task-detail" | "task-form";
 
@@ -34,6 +36,15 @@ export default function Sidebar({
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
   const hasNewMessage = useNotificationStore((state) => state.hasNewMessage);
+  const setHasNewMessage = useNotificationStore(
+    (state) => state.setHasNewMessage
+  );
+  const unreadChatCount = useNotificationStore(
+    (state) => state.unreadChatCount
+  );
+  const setUnreadChatCount = useNotificationStore(
+    (state) => state.setUnreadChatCount
+  );
   const hasPendingLeaveRequest = useNotificationStore(
     (state) => state.hasPendingLeaveRequest
   );
@@ -42,6 +53,32 @@ export default function Sidebar({
   );
   const isTeamLeadOrAbove =
     user?.role && ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user.role);
+
+  // 알림 센터 기준으로 채팅 New 배지 동기화
+  useEffect(() => {
+    const refreshChatBadge = async () => {
+      try {
+        const data = await getNotifications({ unread: true, limit: 50 });
+        const hasUnreadChat = data.some((n) => n.type === "chat");
+        const chatUnreadCount = data.filter((n) => n.type === "chat").length;
+        setHasNewMessage(hasUnreadChat);
+        setUnreadChatCount(chatUnreadCount);
+      } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("채팅 알림 배지 동기화 실패:", error);
+        }
+      }
+    };
+
+    refreshChatBadge();
+    const handler = () => refreshChatBadge();
+    const interval = setInterval(refreshChatBadge, 30000);
+    window.addEventListener("notification_update", handler);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("notification_update", handler);
+    };
+  }, [setHasNewMessage]);
 
   const handleLogout = () => {
     logout();
@@ -94,9 +131,9 @@ export default function Sidebar({
                 {menu}
               </div>
               <div className="flex items-center gap-2">
-                {menu === "채팅" && hasNewMessage && (
+                {menu === "채팅" && unreadChatCount > 0 && (
                   <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-semibold animate-pulse flex-shrink-0">
-                    New
+                    {unreadChatCount}
                   </span>
                 )}
                 {menu === "일정" &&

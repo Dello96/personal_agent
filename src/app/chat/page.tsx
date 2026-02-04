@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useRef, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import AppLayout from "@/app/components/shared/AppLayout";
 import { useAuthStore } from "@/app/stores/authStore";
 import {
@@ -13,12 +13,18 @@ import {
 } from "@/lib/api/chat";
 import { formatRelativeTime } from "@/lib/utils/dateFormat";
 import Image from "next/image";
-import { getTeamMembers, TeamMember } from "@/lib/api/users";
+import { TeamMember } from "@/lib/api/users";
+import { getCurrentTeamMembers } from "@/lib/api/team";
 import { chatWebSocketClient } from "@/lib/websocket/chatClient";
 import { useNotificationStore } from "@/app/stores/notificationStore";
+import {
+  markChatRoomNotificationsRead,
+  getChatUnreadCounts,
+} from "@/lib/api/notifications";
 
 const ChatPage = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const user = useAuthStore((state) => state.user);
   const token = useAuthStore((state) => state.token);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -33,8 +39,24 @@ const ChatPage = () => {
   const [currentChatRoomId, setCurrentChatRoomId] = useState<string | null>(
     null
   );
+  const [teamChatRoomId, setTeamChatRoomId] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedUserName, setSelectedUserName] = useState<string | null>(null);
+  const [directRoomIds, setDirectRoomIds] = useState<Record<string, string>>(
+    {}
+  );
+  const [unreadByRoomId, setUnreadByRoomId] = useState<Record<string, number>>(
+    {}
+  );
+
+  const queryRoomId = searchParams.get("roomId");
+  const queryType = searchParams.get("type") as "TEAM" | "DIRECT" | null;
+  const queryUserId = searchParams.get("userId");
+  const resolvedDirectName = useMemo(() => {
+    if (!queryUserId) return null;
+    const found = teamMembers.find((m) => m.id === queryUserId);
+    return found?.name ?? null;
+  }, [teamMembers, queryUserId]);
   const [isConnected, setIsConnected] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -202,7 +224,7 @@ const ChatPage = () => {
   // 팀원 목록 조회
   const fetchTeamMembers = async () => {
     try {
-      const members = await getTeamMembers();
+      const members = await getCurrentTeamMembers();
       // 본인을 가장 앞에 추가
       if (user) {
         const currentUserMember: TeamMember = {
@@ -224,6 +246,34 @@ const ChatPage = () => {
       setTeamMembers([]);
     }
   };
+
+  // 팀원 목록이 바뀌면 개인 채팅방 id 미리 확보 (읽음 배지용)
+  useEffect(() => {
+    const prefetchDirectRooms = async () => {
+      if (!user || teamMembers.length === 0) return;
+      try {
+        const members = teamMembers.filter((m) => m.id !== user.id);
+        const results = await Promise.all(
+          members.map(async (m) => {
+            const room = await getDirectChatRoom(m.id);
+            return [m.id, room.id] as const;
+          })
+        );
+        const map = results.reduce(
+          (acc, [userId, roomId]) => {
+            acc[userId] = roomId;
+            return acc;
+          },
+          {} as Record<string, string>
+        );
+        setDirectRoomIds(map);
+      } catch (error) {
+        console.error("개인 채팅방 프리로드 실패:", error);
+      }
+    };
+
+    prefetchDirectRooms();
+  }, [user, teamMembers]);
 
   // 참여자 클릭 핸들러
   const handleMemberClick = async (memberId: string, memberName: string) => {
@@ -249,6 +299,7 @@ const ChatPage = () => {
       setMessages([]);
       try {
         const teamRoom = await getChatRoom();
+        setTeamChatRoomId(teamRoom.id);
         setCurrentChatRoomId(teamRoom.id);
         await fetchMessages(false, teamRoom.id, "TEAM");
         // WebSocket으로 팀 채팅방 참여
@@ -418,20 +469,55 @@ const ChatPage = () => {
       setIsConnected(true);
     }
 
-    // 컴포넌트 언마운트 시 연결 종료
-    return () => {
-      console.log("🔌 WebSocket 연결 종료 (컴포넌트 언마운트)");
-      wsClient.disconnect();
-    };
+    // 컴포넌트 언마운트 시 연결 종료하지 않음 (전역 연결 유지)
+    return () => {};
   }, [token, user]);
 
-  // 채팅 페이지 진입 시 현재 채팅방이 있으면 알림 제거
+  // 팀/개인 채팅방을 실제로 열었을 때 읽음 처리
   useEffect(() => {
-    // 채팅방이 로드된 후에만 알림 제거 (현재 보고 있는 채팅방이 있을 때)
-    if (currentChatRoomId) {
-      clearNewMessage();
-    }
-  }, [currentChatRoomId, clearNewMessage]);
+    const markChatNotificationsRead = async () => {
+      if (!user || !currentChatRoomId) return;
+      try {
+        await markChatRoomNotificationsRead(currentChatRoomId);
+        setUnreadByRoomId((prev) => ({
+          ...prev,
+          [currentChatRoomId]: 0,
+        }));
+        // 채팅방을 열었으면 배지는 해제
+        clearNewMessage();
+        window.dispatchEvent(new CustomEvent("notification_update"));
+      } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("채팅 알림 읽음 처리 실패:", error);
+        }
+      }
+    };
+
+    markChatNotificationsRead();
+  }, [user, currentChatRoomId, chatType, clearNewMessage]);
+
+  // 채팅방별 미읽음 개수 동기화
+  useEffect(() => {
+    const syncUnreadCounts = async () => {
+      try {
+        const data = await getChatUnreadCounts();
+        setUnreadByRoomId(data.counts || {});
+      } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("채팅 미읽음 동기화 실패:", error);
+        }
+      }
+    };
+
+    syncUnreadCounts();
+    const handler = () => syncUnreadCounts();
+    const interval = setInterval(syncUnreadCounts, 30000);
+    window.addEventListener("notification_update", handler);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("notification_update", handler);
+    };
+  }, []);
 
   // 초기 메시지 로드 및 팀원 목록 조회
   useEffect(() => {
@@ -449,6 +535,7 @@ const ChatPage = () => {
     const loadTeamChat = async () => {
       try {
         const teamRoom = await getChatRoom();
+        setTeamChatRoomId(teamRoom.id);
         setCurrentChatRoomId(teamRoom.id);
         await fetchMessages(false, teamRoom.id, "TEAM");
         wsClientRef.current.joinRoom("", "TEAM");
@@ -460,6 +547,48 @@ const ChatPage = () => {
     loadTeamChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, isConnected]);
+
+  // 알림에서 진입한 채팅방 즉시 오픈
+  useEffect(() => {
+    if (!isConnected || !queryRoomId || !queryType) return;
+    const openFromNotification = async () => {
+      try {
+        if (currentChatRoomId) {
+          wsClientRef.current.leaveRoom(currentChatRoomId);
+        }
+
+        if (queryType === "TEAM") {
+          setChatType("TEAM");
+          setSelectedUserId(null);
+          setSelectedUserName(null);
+          setTeamChatRoomId(queryRoomId);
+          setCurrentChatRoomId(queryRoomId);
+          setMessages([]);
+          await fetchMessages(false, queryRoomId, "TEAM");
+          wsClientRef.current.joinRoom("", "TEAM");
+        } else {
+          setChatType("DIRECT");
+          setSelectedUserId(queryUserId);
+          setSelectedUserName(resolvedDirectName);
+          setCurrentChatRoomId(queryRoomId);
+          setMessages([]);
+          await fetchMessages(false, queryRoomId, "DIRECT");
+          wsClientRef.current.joinRoom(queryRoomId, "DIRECT");
+        }
+      } catch (error) {
+        console.error("알림 기반 채팅방 오픈 실패:", error);
+      }
+    };
+
+    openFromNotification();
+  }, [
+    isConnected,
+    queryRoomId,
+    queryType,
+    queryUserId,
+    resolvedDirectName,
+    currentChatRoomId,
+  ]);
 
   // 새 메시지가 추가되면 스크롤
   useEffect(() => {
@@ -592,6 +721,10 @@ const ChatPage = () => {
               {teamMembers.length > 0 ? (
                 teamMembers.map((member) => {
                   const isCurrentUser = member.id === user?.id;
+                  const roomId = isCurrentUser
+                    ? teamChatRoomId
+                    : directRoomIds[member.id];
+                  const unreadCount = roomId ? unreadByRoomId[roomId] || 0 : 0;
                   return (
                     <button
                       key={member.id}
@@ -614,6 +747,11 @@ const ChatPage = () => {
                         {member.name.charAt(0)}
                       </div>
                       <span className="text-sm font-medium">{member.name}</span>
+                      {unreadCount > 0 && (
+                        <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">
+                          {unreadCount}
+                        </span>
+                      )}
                     </button>
                   );
                 })

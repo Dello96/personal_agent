@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const prisma = require("../db/prisma");
 const authenticate = require("../middleware/auth");
+const { createNotificationsForUsers } = require("../utils/notifications");
 
 // 모든 라우트에 인증 미들웨어 적용
 router.use(authenticate);
@@ -205,6 +206,22 @@ router.post("/events", async (req, res) => {
             });
           });
         }
+
+        const leadIds = teamLeads.map((lead) => lead.id);
+        await createNotificationsForUsers(prisma, leadIds, {
+          type: "leave_request",
+          title: "연차/휴가 승인 요청",
+          message: `${event.requester.name}님의 ${event.title}`,
+          link: `/calendar?eventId=${event.id}`,
+        });
+
+        if (chatWSS) {
+          leadIds.forEach((leadId) => {
+            chatWSS.broadcastToUser(leadId, {
+              type: "notification_update",
+            });
+          });
+        }
       } catch (error) {
         console.error("연차/휴가 신청 알림 전송 오류:", error);
         // 알림 전송 실패해도 일정 생성은 성공으로 처리
@@ -274,6 +291,24 @@ router.put("/events/:id/approve", async (req, res) => {
       },
     });
 
+    try {
+      await createNotificationsForUsers(prisma, [event.requestedBy], {
+        type: "leave_approved",
+        title: "연차/휴가 승인",
+        message: `${event.title} 승인됨`,
+        link: `/calendar?eventId=${event.id}`,
+      });
+
+      const chatWSS = require("../server").chatWSS;
+      if (chatWSS) {
+        chatWSS.broadcastToUser(event.requestedBy, {
+          type: "notification_update",
+        });
+      }
+    } catch (notifyError) {
+      console.error("승인 알림 생성 오류:", notifyError);
+    }
+
     res.json(updatedEvent);
   } catch (error) {
     console.error("일정 승인 오류:", error);
@@ -340,6 +375,24 @@ router.put("/events/:id/reject", async (req, res) => {
         },
       },
     });
+
+    try {
+      await createNotificationsForUsers(prisma, [event.requestedBy], {
+        type: "leave_rejected",
+        title: "연차/휴가 반려",
+        message: `${event.title} 반려됨`,
+        link: `/calendar?eventId=${event.id}`,
+      });
+
+      const chatWSS = require("../server").chatWSS;
+      if (chatWSS) {
+        chatWSS.broadcastToUser(event.requestedBy, {
+          type: "notification_update",
+        });
+      }
+    } catch (notifyError) {
+      console.error("반려 알림 생성 오류:", notifyError);
+    }
 
     res.json(updatedEvent);
   } catch (error) {
