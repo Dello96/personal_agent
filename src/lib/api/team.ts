@@ -56,3 +56,17 @@ export const getTeams = async (): Promise<{
   });
   return response as { teams: Team[]; currentTeamName: string | null };
 };
+
+export const updateTeamMemberRole = async (memberId: string, role: string) => {
+  return apiRequest(`/api/team/members/${memberId}/role`, {
+    method: "PUT",
+    body: JSON.stringify({ role }),
+  });
+};
+
+export const renameTeam = async (newName: string) => {
+  return apiRequest("/api/team/rename", {
+    method: "PUT",
+    body: JSON.stringify({ newName }),
+  });
+};

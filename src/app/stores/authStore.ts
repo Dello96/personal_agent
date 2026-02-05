@@ -17,6 +17,7 @@ interface AuthState {
   token: string | null;
   login: (user: User, token: string) => void;
   logout: () => void;
+  setUser: (user: User) => void;
   _hasHydrated: boolean;
   setHasHydrated: (state: boolean) => void;
 }
@@ -52,6 +53,10 @@ export const useAuthStore = create<AuthState>()(
           token: null,
         });
         // localStorage도 자동으로 비워짐 (persist 미들웨어)
+      },
+
+      setUser: (user) => {
+        set({ user });
       },
     }),
     {

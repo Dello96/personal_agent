@@ -27,7 +27,7 @@ function getEventIcon(eventType: string): string {
 
 function getEventLabel(eventType: string): string {
   const labels: Record<string, string> = {
-    FILE_UPDATE: "파일 업데이트",
+    FILE_UPDATE: "업로드/파일 업데이트",
     FILE_COMMENT: "댓글",
     FILE_VERSION_UPDATE: "버전 생성",
     FILE_DELETE: "파일 삭제",

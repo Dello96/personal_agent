@@ -47,6 +47,58 @@ router.get("/me", async (req, res) => {
   }
 });
 
+// 현재 사용자 정보 업데이트 (닉네임/프로필 이미지)
+router.put("/me", async (req, res) => {
+  try {
+    const { name, picture } = req.body || {};
+    const data = {};
+
+    if (typeof name === "string") {
+      const trimmedName = name.trim();
+      if (!trimmedName) {
+        return res.status(400).json({ error: "닉네임을 입력해주세요." });
+      }
+      data.name = trimmedName;
+    }
+
+    if (picture === null) {
+      data.picture = null;
+    } else if (typeof picture === "string") {
+      const trimmedPicture = picture.trim();
+      if (!trimmedPicture) {
+        return res
+          .status(400)
+          .json({ error: "프로필 이미지 URL이 비었습니다." });
+      }
+      data.picture = trimmedPicture;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ error: "변경할 정보가 없습니다." });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.userId },
+      data,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        picture: true,
+        role: true,
+        teamName: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return res.json(updatedUser);
+  } catch (error) {
+    console.error("사용자 정보 업데이트 오류:", error);
+    return res.status(500).json({ error: "서버 오류" });
+  }
+});
+
 // 팀원 목록 조회 (현재 로그인한 사용자의 팀에 속한 멤버만 반환)
 router.get("/team-members", async (req, res) => {
   try {

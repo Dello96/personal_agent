@@ -23,6 +23,9 @@ const EVENT_TYPE_OPTIONS = [
   { value: "DEV_MODE_STATUS_UPDATE", label: "Dev Mode 상태 변경" },
 ];
 
+const getEventLabel = (value: string) =>
+  EVENT_TYPE_OPTIONS.find((opt) => opt.value === value)?.label ?? value;
+
 export default function FigmaConnectionSettings() {
   const [connection, setConnection] = useState<FigmaConnection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,7 +36,10 @@ export default function FigmaConnectionSettings() {
   const [accessToken, setAccessToken] = useState("");
   const [context, setContext] = useState<"team" | "project" | "file">("team");
   const [contextId, setContextId] = useState("");
-  const [eventType, setEventType] = useState("FILE_UPDATE");
+  const [eventTypes, setEventTypes] = useState<string[]>([
+    "FILE_UPDATE",
+    "FILE_VERSION_UPDATE",
+  ]);
 
   const loadConnection = async () => {
     try {
@@ -42,7 +48,15 @@ export default function FigmaConnectionSettings() {
       setConnection(data);
       setContext(data.context as "team" | "project" | "file");
       setContextId(data.contextId);
-      setEventType(data.eventType);
+      if (data.eventTypes && data.eventTypes.length > 0) {
+        setEventTypes(data.eventTypes);
+      } else if (data.eventType) {
+        setEventTypes(
+          data.eventType.includes(",")
+            ? data.eventType.split(",").map((t) => t.trim())
+            : [data.eventType]
+        );
+      }
       setError(null);
     } catch (e: unknown) {
       const err = e as { message?: string };
@@ -66,7 +80,7 @@ export default function FigmaConnectionSettings() {
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!accessToken || !contextId || !eventType) {
+    if (!accessToken || !contextId || eventTypes.length === 0) {
       setError("토큰, Context ID, 이벤트 타입을 모두 입력해주세요.");
       return;
     }
@@ -76,7 +90,7 @@ export default function FigmaConnectionSettings() {
         accessToken,
         context,
         contextId: contextId.trim(),
-        eventType,
+        eventTypes,
       });
       setConnection(result);
       setAccessToken("");
@@ -141,7 +155,14 @@ export default function FigmaConnectionSettings() {
               </p>
               <p className="text-sm text-gray-700">
                 <span className="font-semibold">이벤트:</span>{" "}
-                {connection.eventType}
+                {(connection.eventTypes && connection.eventTypes.length > 0
+                  ? connection.eventTypes
+                  : connection.eventType
+                    ? connection.eventType.split(",").map((t) => t.trim())
+                    : []
+                )
+                  .map((value) => getEventLabel(value))
+                  .join(", ")}
               </p>
               <p className="text-sm text-gray-700">
                 <span className="font-semibold">상태:</span>{" "}
@@ -225,17 +246,33 @@ export default function FigmaConnectionSettings() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               구독할 이벤트
             </label>
-            <select
-              value={eventType}
-              onChange={(e) => setEventType(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#A259FF]"
-            >
-              {EVENT_TYPE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-2">
+              {EVENT_TYPE_OPTIONS.map((opt) => {
+                const checked = eventTypes.includes(opt.value);
+                return (
+                  <label
+                    key={opt.value}
+                    className="flex items-center gap-2 text-sm text-gray-700"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setEventTypes((prev) => [...prev, opt.value]);
+                        } else {
+                          setEventTypes((prev) =>
+                            prev.filter((v) => v !== opt.value)
+                          );
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-gray-300 text-[#A259FF] focus:ring-[#A259FF]"
+                    />
+                    {opt.label}
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
           <button

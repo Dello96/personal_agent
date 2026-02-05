@@ -11,6 +11,30 @@ const getToken = () => {
   return authStore.token;
 };
 
+const apiRequestForm = async (endpoint: string, formData: FormData) => {
+  const token = getToken();
+  const headers = {
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let errorMessage = `API Error: ${response.statusText}`;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorMessage;
+    } catch (e) {}
+    throw new Error(errorMessage);
+  }
+
+  return response.json();
+};
+
 export const apiRequest = async (
   endpoint: string,
   options: RequestInit = {}
@@ -60,6 +84,17 @@ export const getCurrentUser = async (): Promise<User> => {
   return apiRequest("/api/users/me");
 };
 
+// 현재 사용자 정보 업데이트 (닉네임/프로필 이미지)
+export const updateCurrentUser = async (payload: {
+  name?: string;
+  picture?: string | null;
+}): Promise<User> => {
+  return apiRequest("/api/users/me", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+};
+
 // users.ts에 추가
 export interface TeamMember {
   id: string;
@@ -71,4 +106,11 @@ export interface TeamMember {
 // 팀원 목록 조회
 export const getTeamMembers = async () => {
   return apiRequest("/api/users/team-members");
+};
+
+// 프로필 이미지 업로드
+export const uploadProfileImage = async (file: File) => {
+  const formData = new FormData();
+  formData.append("image", file);
+  return apiRequestForm("/api/upload/profile", formData);
 };

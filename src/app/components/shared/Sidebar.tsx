@@ -116,38 +116,40 @@ export default function Sidebar({
 
         {/* 메뉴 리스트 */}
         <nav className="flex-1 space-y-2">
-          {defaultMenus.map((menu) => (
-            <button
-              key={menu}
-              onClick={() => handleDefaultMenuClick(menu)}
-              className={`w-full text-left px-4 py-3 rounded-xl transition-all flex items-center justify-between ${
-                activeMenu === menu
-                  ? "bg-white text-[#7F55B1] shadow-lg font-semibold"
-                  : "text-white/90 hover:bg-white/20"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span>{getMenuIcon(menu)}</span>
-                {menu}
-              </div>
-              <div className="flex items-center gap-2">
-                {menu === "채팅" && unreadChatCount > 0 && (
-                  <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-semibold animate-pulse flex-shrink-0">
-                    {unreadChatCount}
-                  </span>
-                )}
-                {menu === "일정" &&
-                  isTeamLeadOrAbove &&
-                  hasPendingLeaveRequest && (
-                    <span className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded-full font-semibold animate-pulse flex-shrink-0">
-                      {pendingLeaveRequestCount > 0
-                        ? pendingLeaveRequestCount
-                        : ""}
+          {[...defaultMenus, ...(isTeamLeadOrAbove ? ["팀 관리"] : [])].map(
+            (menu) => (
+              <button
+                key={menu}
+                onClick={() => handleDefaultMenuClick(menu)}
+                className={`w-full text-left px-4 py-3 rounded-xl transition-all flex items-center justify-between ${
+                  activeMenu === menu
+                    ? "bg-white text-[#7F55B1] shadow-lg font-semibold"
+                    : "text-white/90 hover:bg-white/20"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span>{getMenuIcon(menu)}</span>
+                  {menu}
+                </div>
+                <div className="flex items-center gap-2">
+                  {menu === "채팅" && unreadChatCount > 0 && (
+                    <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-semibold animate-pulse flex-shrink-0">
+                      {unreadChatCount}
                     </span>
                   )}
-              </div>
-            </button>
-          ))}
+                  {menu === "일정" &&
+                    isTeamLeadOrAbove &&
+                    hasPendingLeaveRequest && (
+                      <span className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded-full font-semibold animate-pulse flex-shrink-0">
+                        {pendingLeaveRequestCount > 0
+                          ? pendingLeaveRequestCount
+                          : ""}
+                      </span>
+                    )}
+                </div>
+              </button>
+            )
+          )}
         </nav>
 
         {/* 하단 로그아웃 버튼 */}

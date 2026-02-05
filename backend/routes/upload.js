@@ -94,6 +94,51 @@ router.post("/", upload.single("image"), async (req, res) => {
 });
 
 /**
+ * POST /api/upload/profile
+ * 프로필 이미지 업로드
+ */
+router.post("/profile", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "이미지 파일이 필요합니다." });
+    }
+
+    if (req.file.size > 5 * 1024 * 1024) {
+      return res
+        .status(400)
+        .json({ error: "파일 크기는 5MB를 초과할 수 없습니다." });
+    }
+
+    const imageUrl = await uploadToS3(req.file, "profiles", null);
+
+    res.status(200).json({
+      success: true,
+      imageUrl: imageUrl,
+      message: "프로필 이미지가 성공적으로 업로드되었습니다.",
+    });
+  } catch (error) {
+    console.error("프로필 이미지 업로드 오류:", error);
+
+    if (error instanceof multer.MulterError) {
+      if (error.code === "LIMIT_FILE_SIZE") {
+        return res
+          .status(400)
+          .json({ error: "파일 크기는 5MB를 초과할 수 없습니다." });
+      }
+      return res
+        .status(400)
+        .json({ error: `파일 업로드 오류: ${error.message}` });
+    }
+
+    res.status(500).json({
+      error: "이미지 업로드에 실패했습니다.",
+      details:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+});
+
+/**
  * POST /api/upload/multiple
  * 여러 이미지 일괄 업로드
  */

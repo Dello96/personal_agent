@@ -25,6 +25,142 @@ router.get("/dashboard", async (req, res) => {
   }
 });
 
+// 팀원 역할 변경 (팀장 이상)
+router.put("/members/:memberId/role", async (req, res) => {
+  try {
+    const { memberId } = req.params;
+    const { role } = req.body;
+    const { teamName, role: requesterRole, userId } = req.user;
+
+    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(requesterRole)) {
+      return res.status(403).json({ error: "권한이 없습니다" });
+    }
+    if (!teamName) {
+      return res.status(400).json({ error: "팀에 속해있지 않습니다." });
+    }
+    const allowedRoles = ["MEMBER", "TEAM_LEAD", "MANAGER", "DIRECTOR"];
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({ error: "유효하지 않은 역할입니다." });
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: memberId },
+      select: { id: true, teamName: true, role: true },
+    });
+    if (!targetUser || targetUser.teamName !== teamName) {
+      return res.status(404).json({ error: "팀원을 찾을 수 없습니다." });
+    }
+
+    if (targetUser.id === userId && role === "MEMBER") {
+      return res.status(400).json({
+        error: "본인의 역할을 팀원으로 변경할 수 없습니다.",
+      });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: memberId },
+      data: { role },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        teamName: true,
+      },
+    });
+
+    return res.json({ message: "역할이 변경되었습니다.", member: updated });
+  } catch (error) {
+    console.error("팀원 역할 변경 오류:", error);
+    return res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+// 팀명 변경 (팀장 이상)
+router.put("/rename", async (req, res) => {
+  try {
+    const { newName } = req.body;
+    const { teamName, role } = req.user;
+
+    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+      return res.status(403).json({ error: "권한이 없습니다" });
+    }
+    if (!teamName) {
+      return res.status(400).json({ error: "팀에 속해있지 않습니다." });
+    }
+    if (!newName || typeof newName !== "string" || newName.trim() === "") {
+      return res.status(400).json({ error: "새 팀명을 입력해주세요." });
+    }
+    const trimmedName = newName.trim();
+    if (trimmedName.length > 50) {
+      return res.status(400).json({ error: "팀 이름은 50자 이하여야 합니다." });
+    }
+    if (trimmedName === teamName) {
+      return res.status(400).json({ error: "현재 팀명과 동일합니다." });
+    }
+
+    const exists = await prisma.team.findUnique({
+      where: { teamName: trimmedName },
+      select: { teamName: true },
+    });
+    if (exists) {
+      return res.status(409).json({ error: "이미 존재하는 팀 이름입니다." });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.team.update({
+        where: { teamName },
+        data: { teamName: trimmedName },
+      });
+
+      await tx.user.updateMany({
+        where: { teamName },
+        data: { teamName: trimmedName },
+      });
+
+      await tx.task.updateMany({
+        where: { teamId: teamName },
+        data: { teamId: trimmedName },
+      });
+
+      await tx.calendarEvent.updateMany({
+        where: { teamId: teamName },
+        data: { teamId: trimmedName },
+      });
+
+      await tx.chatRoom.updateMany({
+        where: { teamId: teamName },
+        data: { teamId: trimmedName },
+      });
+
+      await tx.githubRepository.updateMany({
+        where: { teamId: teamName },
+        data: { teamId: trimmedName },
+      });
+
+      await tx.figmaTeamConnection.updateMany({
+        where: { teamId: teamName },
+        data: { teamId: trimmedName },
+      });
+
+      const updatedTeam = await tx.team.findUnique({
+        where: { teamName: trimmedName },
+        select: { id: true, teamName: true, createdAt: true, updatedAt: true },
+      });
+
+      return updatedTeam;
+    });
+
+    return res.json({ message: "팀명이 변경되었습니다.", team: result });
+  } catch (error) {
+    console.error("팀명 변경 오류:", error);
+    if (error.code === "P2002") {
+      return res.status(409).json({ error: "이미 존재하는 팀 이름입니다." });
+    }
+    return res.status(500).json({ error: "서버 오류가 발생했습니다." });
+  }
+});
+
 // 팀 생성 (팀장급 이상만 가능)
 router.post("/create", async (req, res) => {
   try {

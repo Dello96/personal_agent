@@ -299,8 +299,25 @@ model FigmaTeamConnection {
 
   team     Team          @relation(fields: [teamId], references: [teamName], onDelete: Cascade)
   activities FigmaActivity[]
+  subscriptions FigmaWebhookSubscription[]
 
   @@index([teamId])
+}
+
+model FigmaWebhookSubscription {
+  id             String   @id @default(uuid())
+  connectionId   String
+  figmaWebhookId Int      @unique
+  passcode       String
+  eventType      String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  connection FigmaTeamConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId])
+  @@index([eventType])
 }
 
 model FigmaActivity {

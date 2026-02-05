@@ -666,13 +666,20 @@ function HomeContent() {
             </div>
           </div>
 
-          {/* 팀원 목록 (Group) */}
+          {/* 팀원 목록 (Team) */}
           <div className="bg-white rounded-3xl p-6 shadow-sm">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-semibold text-gray-800">Group</h3>
-              <button className="text-gray-400 text-sm hover:text-[#7F55B1]">
-                ⋮
-              </button>
+              <h3 className="font-semibold text-gray-800">Team</h3>
+              {["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(
+                user?.role || ""
+              ) && (
+                <button
+                  onClick={() => router.push("/manager/team")}
+                  className="text-sm text-[#7F55B1] hover:text-[#6A46A0] font-medium"
+                >
+                  팀 관리
+                </button>
+              )}
             </div>
 
             {membersLoading ? (
