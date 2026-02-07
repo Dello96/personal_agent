@@ -51,8 +51,7 @@ export default function Sidebar({
   const pendingLeaveRequestCount = useNotificationStore(
     (state) => state.pendingLeaveRequestCount
   );
-  const isTeamLeadOrAbove =
-    user?.role && ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user.role);
+  const isTeamLeadOrAbove = user?.role === "TEAM_LEAD";
 
   // 알림 센터 기준으로 채팅 New 배지 동기화
   useEffect(() => {
@@ -109,8 +108,8 @@ export default function Sidebar({
         {/* 로고 영역 */}
         <div className="mb-10">
           <h1 className="text-white text-2xl font-bold italic flex items-center gap-2">
-            <span className="text-3xl">📋</span>
-            TaskFlow
+            <span className="text-3xl"></span>
+            Work Together
           </h1>
         </div>
 
@@ -174,8 +173,8 @@ export default function Sidebar({
             onClick={() => router.push("/")}
             className="text-white text-2xl font-bold italic flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
           >
-            <span className="text-3xl">📋</span>
-            TaskFlow
+            <span className="text-3xl"></span>
+            Work Together
           </h1>
         </div>
 
@@ -227,8 +226,8 @@ export default function Sidebar({
         {/* 로고 영역 */}
         <div className="mb-10">
           <h1 className="text-white text-2xl font-bold italic flex items-center gap-2">
-            <span className="text-3xl">📋</span>
-            TaskFlow
+            <span className="text-3xl"></span>
+            Work Together
           </h1>
         </div>
 

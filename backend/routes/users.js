@@ -123,7 +123,14 @@ router.get("/team-members", async (req, res) => {
 
     const members = await prisma.user.findMany({
       where: { teamName: normalizedTeamName },
-      select: { id: true, name: true, email: true, role: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "asc" },
     });
 
     console.log("[team-members] 필터 결과", {

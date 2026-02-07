@@ -49,6 +49,7 @@ const authRoutes = require("./routes/auth");
 const githubRoutes = require("./routes/github");
 const figmaRoutes = require("./routes/figma");
 const notificationRoutes = require("./routes/notifications");
+const linksRoutes = require("./routes/links");
 
 app.use("/api/tasks", tasksRoutes);
 app.use("/api/team", teamRoutes);
@@ -57,6 +58,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/github", githubRoutes);
 app.use("/api/figma", figmaRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/links", linksRoutes);
 
 const uploadRoutes = require("./routes/upload");
 app.use("/api/upload", uploadRoutes);
@@ -154,7 +156,7 @@ app.get("/login/redirect", async (req, res) => {
           email: googleUser.email,
           name: googleUser.name,
           picture: googleUser.picture,
-          role: "MEMBER", // 기본값
+          role: "INTERN", // 기본값
           teamName: null, // 처음에는 팀 없음
         },
       });
@@ -269,7 +271,7 @@ app.get("/auth/kakao/callback", async (req, res) => {
           email: email,
           name: name || "Kakao User",
           picture: picture,
-          role: "MEMBER",
+          role: "INTERN",
           teamName: null,
         },
       });

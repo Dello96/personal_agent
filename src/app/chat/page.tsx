@@ -10,6 +10,7 @@ import {
   deleteMessage,
   getDirectChatRoom,
   getChatRoom,
+  uploadChatFiles,
 } from "@/lib/api/chat";
 import { formatRelativeTime } from "@/lib/utils/dateFormat";
 import Image from "next/image";
@@ -21,6 +22,7 @@ import {
   markChatRoomNotificationsRead,
   getChatUnreadCounts,
 } from "@/lib/api/notifications";
+import { getLinkPreview } from "@/lib/api/links";
 
 const ChatPage = () => {
   const router = useRouter();
@@ -29,6 +31,19 @@ const ChatPage = () => {
   const token = useAuthStore((state) => state.token);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [uploadedAttachments, setUploadedAttachments] = useState<
+    Array<{
+      url: string;
+      type: "image" | "video";
+      name?: string;
+      size?: number;
+    }>
+  >([]);
+  const [attachedPreviews, setAttachedPreviews] = useState<
+    Array<{ url: string; type: "image" | "video"; name: string }>
+  >([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -85,6 +100,8 @@ const ChatPage = () => {
       router.push("/calendar");
     } else if (menu === "채팅") {
       router.push("/chat");
+    } else if (menu === "팀 관리") {
+      router.push("/manager/team");
     }
   };
 
@@ -140,10 +157,44 @@ const ChatPage = () => {
   // 메시지 전송 (WebSocket 사용)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || isSending || !isConnected) return;
-
     const messageContent = newMessage.trim();
+    if (
+      (!messageContent && attachedFiles.length === 0) ||
+      isSending ||
+      !isConnected
+    )
+      return;
+
     const tempId = `temp-${Date.now()}-${Math.random()}`;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urls = messageContent.match(urlRegex) || [];
+
+    let attachmentsPayload = uploadedAttachments;
+    if (attachedFiles.length > 0 && uploadedAttachments.length === 0) {
+      try {
+        setIsUploading(true);
+        const uploadResult = await uploadChatFiles(attachedFiles);
+        attachmentsPayload = uploadResult.files;
+        setUploadedAttachments(uploadResult.files);
+      } catch (error: any) {
+        console.error("첨부파일 업로드 실패:", error);
+        alert(error.message || "첨부파일 업로드에 실패했습니다.");
+        setIsUploading(false);
+        return;
+      } finally {
+        setIsUploading(false);
+      }
+    }
+
+    const linkPreviews = [];
+    for (const url of urls.slice(0, 3)) {
+      try {
+        const preview = await getLinkPreview(url);
+        linkPreviews.push(preview);
+      } catch (previewError) {
+        linkPreviews.push({ url });
+      }
+    }
 
     // 낙관적 업데이트: 전송한 메시지를 즉시 화면에 표시
     const tempMessage: Message = {
@@ -151,6 +202,9 @@ const ChatPage = () => {
       chatRoomId: currentChatRoomId || "",
       senderId: user?.id || "",
       content: messageContent,
+      clientMessageId: tempId,
+      attachments: attachmentsPayload.length > 0 ? attachmentsPayload : null,
+      links: linkPreviews.length > 0 ? linkPreviews : null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       sender: {
@@ -176,10 +230,15 @@ const ChatPage = () => {
       wsClientRef.current.sendMessage(
         messageContent,
         currentChatRoomId,
-        chatType
+        chatType,
+        attachmentsPayload.length > 0 ? attachmentsPayload : null,
+        linkPreviews.length > 0 ? linkPreviews : null,
+        tempId
       );
 
       // 전송 성공 (서버에서 브로드캐스트된 메시지가 오면 임시 메시지가 자동으로 교체됨)
+      setAttachedFiles([]);
+      setUploadedAttachments([]);
     } catch (error: any) {
       console.error("메시지 전송 실패:", error);
       const errorMessage = error.message || "메시지 전송에 실패했습니다.";
@@ -209,6 +268,56 @@ const ChatPage = () => {
     }
   };
 
+  const handleFileChange = (files: FileList | null) => {
+    if (!files) return;
+    const nextFiles = Array.from(files);
+    setAttachedFiles((prev) => [...prev, ...nextFiles].slice(0, 5));
+    setUploadedAttachments([]);
+  };
+
+  useEffect(() => {
+    const previews = attachedFiles.map((file) => {
+      const type: "image" | "video" = file.type.startsWith("video/")
+        ? "video"
+        : "image";
+      return {
+        url: URL.createObjectURL(file),
+        type,
+        name: file.name,
+      };
+    });
+    setAttachedPreviews(previews);
+
+    return () => {
+      previews.forEach((preview) => URL.revokeObjectURL(preview.url));
+    };
+  }, [attachedFiles]);
+
+  const removeFile = (index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const renderMessageContent = (content: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = content.split(urlRegex);
+    return parts.map((part, idx) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a
+            key={`${part}-${idx}`}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline break-all"
+          >
+            {part}
+          </a>
+        );
+      }
+      return <span key={`${part}-${idx}`}>{part}</span>;
+    });
+  };
+
   // 스크롤을 맨 아래로
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -232,6 +341,7 @@ const ChatPage = () => {
           name: user.name,
           email: user.email,
           role: user.role,
+          createdAt: user.createdAt ?? new Date().toISOString(),
         };
         // 본인이 이미 목록에 있으면 제거하고 맨 앞에 추가
         const otherMembers = members.filter(
@@ -421,12 +531,21 @@ const ChatPage = () => {
           }
 
           // 같은 내용의 임시 메시지 찾기 (내가 보낸 메시지인 경우)
-          const tempMessageIndex = prev.findIndex(
-            (m) =>
-              m.id.startsWith("temp-") &&
-              m.content === newMsg.content &&
-              m.senderId === newMsg.senderId
-          );
+          const tempMessageIndex = prev.findIndex((m) => {
+            if (!m.id.startsWith("temp-")) return false;
+            if (m.senderId !== newMsg.senderId) return false;
+            if (newMsg.clientMessageId && m.id === newMsg.clientMessageId) {
+              return true;
+            }
+            const sameContent = m.content === newMsg.content;
+            const sameAttachments =
+              JSON.stringify(m.attachments || []) ===
+              JSON.stringify(newMsg.attachments || []);
+            const sameLinks =
+              JSON.stringify(m.links || []) ===
+              JSON.stringify(newMsg.links || []);
+            return sameContent && sameAttachments && sameLinks;
+          });
 
           if (tempMessageIndex !== -1) {
             // 임시 메시지를 실제 메시지로 교체
@@ -870,9 +989,68 @@ const ChatPage = () => {
                             maxWidth: "70%",
                           }}
                         >
-                          <p className="text-sm whitespace-pre-wrap break-words">
-                            {message.content}
-                          </p>
+                          {message.content && (
+                            <p className="text-sm whitespace-pre-wrap break-words">
+                              {renderMessageContent(message.content)}
+                            </p>
+                          )}
+                          {message.attachments &&
+                            message.attachments.length > 0 && (
+                              <div className="mt-2 space-y-2">
+                                {message.attachments.map((file, fileIdx) => (
+                                  <div key={`${message.id}-file-${fileIdx}`}>
+                                    {file.type === "image" ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        src={file.url}
+                                        alt={file.name || "attachment"}
+                                        className="max-w-[220px] rounded-lg"
+                                      />
+                                    ) : (
+                                      <video
+                                        src={file.url}
+                                        controls
+                                        className="max-w-[220px] rounded-lg"
+                                      />
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          {message.links && message.links.length > 0 && (
+                            <div className="mt-2 space-y-2">
+                              {message.links.map((link, linkIdx) => (
+                                <a
+                                  key={`${message.id}-link-${linkIdx}`}
+                                  href={link.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`block rounded-lg border ${
+                                    isOwnGroup
+                                      ? "border-white/30"
+                                      : "border-gray-200"
+                                  } p-3`}
+                                >
+                                  {link.image && (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={link.image}
+                                      alt={link.title || "link preview"}
+                                      className="w-full max-w-[220px] rounded-md mb-2"
+                                    />
+                                  )}
+                                  <p className="text-sm font-semibold break-words">
+                                    {link.title || link.url}
+                                  </p>
+                                  {link.description && (
+                                    <p className="text-xs opacity-80 mt-1 line-clamp-2">
+                                      {link.description}
+                                    </p>
+                                  )}
+                                </a>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         {/* 시간 표시 - 그룹의 마지막 메시지에만 표시 */}
@@ -906,21 +1084,73 @@ const ChatPage = () => {
           onSubmit={handleSendMessage}
           className="border-t border-gray-200 p-4"
         >
+          {attachedFiles.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {attachedFiles.map((file, idx) => (
+                <div
+                  key={`${file.name}-${idx}`}
+                  className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2 text-xs"
+                >
+                  {attachedPreviews[idx]?.type === "image" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={attachedPreviews[idx].url}
+                      alt={attachedPreviews[idx].name}
+                      className="w-8 h-8 rounded-md object-cover"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-md bg-gray-300 flex items-center justify-center text-[10px] text-gray-700">
+                      VIDEO
+                    </div>
+                  )}
+                  <span className="max-w-[120px] truncate">{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(idx)}
+                    className="text-gray-500 hover:text-red-500"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2">
+            <label className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg cursor-pointer text-sm text-gray-600 hover:bg-gray-200">
+              📎
+              <input
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                onChange={(e) => handleFileChange(e.target.files)}
+                className="hidden"
+              />
+            </label>
             <input
               type="text"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="메시지를 입력하세요..."
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7F55B1]"
-              disabled={isSending}
+              disabled={isSending || isUploading}
             />
             <button
               type="submit"
-              disabled={!newMessage.trim() || isSending || !isConnected}
+              disabled={
+                (!newMessage.trim() && attachedFiles.length === 0) ||
+                isSending ||
+                isUploading ||
+                !isConnected
+              }
               className="px-6 py-2 bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {!isConnected ? "연결 중..." : isSending ? "전송 중..." : "전송"}
+              {!isConnected
+                ? "연결 중..."
+                : isUploading
+                  ? "업로드 중..."
+                  : isSending
+                    ? "전송 중..."
+                    : "전송"}
             </button>
           </div>
         </form>

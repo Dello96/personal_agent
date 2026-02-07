@@ -59,7 +59,7 @@ router.get("/events/pending", async (req, res) => {
     const { userId, role, teamName } = req.user;
 
     // 팀장 이상만 조회 가능
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+    if (!["TEAM_LEAD"].includes(role)) {
       return res.status(403).json({ error: "권한이 없습니다." });
     }
 
@@ -181,7 +181,7 @@ router.post("/events", async (req, res) => {
         const teamLeads = await prisma.user.findMany({
           where: {
             teamName: teamName,
-            role: { in: ["TEAM_LEAD", "MANAGER", "DIRECTOR"] },
+            role: { in: ["TEAM_LEAD"] },
           },
           select: { id: true },
         });
@@ -242,7 +242,7 @@ router.put("/events/:id/approve", async (req, res) => {
     const { userId, role, teamName } = req.user;
 
     // 팀장 이상만 승인 가능
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+    if (!["TEAM_LEAD"].includes(role)) {
       return res.status(403).json({ error: "승인 권한이 없습니다." });
     }
 
@@ -324,7 +324,7 @@ router.put("/events/:id/reject", async (req, res) => {
     const { comment } = req.body;
 
     // 팀장 이상만 거절 가능
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+    if (!["TEAM_LEAD"].includes(role)) {
       return res.status(403).json({ error: "거절 권한이 없습니다." });
     }
 
@@ -418,8 +418,7 @@ router.delete("/events/:id", async (req, res) => {
 
     // 본인이 요청한 일정이거나 팀장 이상만 삭제 가능
     const canDelete =
-      event.requestedBy === userId ||
-      ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role);
+      event.requestedBy === userId || ["TEAM_LEAD"].includes(role);
 
     if (!canDelete) {
       return res.status(403).json({ error: "삭제 권한이 없습니다." });

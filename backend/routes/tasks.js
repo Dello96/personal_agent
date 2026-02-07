@@ -29,7 +29,9 @@ async function connectTaskGitHubRepository(
 
   // Webhook secret 생성
   const webhookSecret = crypto.randomBytes(32).toString("hex");
-  console.log(`🔐 Webhook Secret 생성: ${webhookSecret.substring(0, 10)}... (길이: ${webhookSecret.length})`);
+  console.log(
+    `🔐 Webhook Secret 생성: ${webhookSecret.substring(0, 10)}... (길이: ${webhookSecret.length})`
+  );
 
   // Webhook URL (팀 레포지토리와 동일한 엔드포인트 사용)
   const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8080";
@@ -39,25 +41,34 @@ async function connectTaskGitHubRepository(
   let webhookId = null;
   try {
     console.log(`📤 Webhook 생성 시도: ${owner}/${repo} -> ${webhookUrl}`);
-    console.log(`🔐 사용할 Secret: ${webhookSecret.substring(0, 10)}... (길이: ${webhookSecret.length})`);
-    
+    console.log(
+      `🔐 사용할 Secret: ${webhookSecret.substring(0, 10)}... (길이: ${webhookSecret.length})`
+    );
+
     // 기존 webhook이 있는지 확인
     try {
-      const existingWebhooks = await octokit.repos.listWebhooks({ owner, repo });
+      const existingWebhooks = await octokit.repos.listWebhooks({
+        owner,
+        repo,
+      });
       if (existingWebhooks.data && existingWebhooks.data.length > 0) {
         console.log(`⚠️ 기존 Webhook 발견: ${existingWebhooks.data.length}개`);
         // 기존 webhook 삭제
         for (const hook of existingWebhooks.data) {
           if (hook.config.url === webhookUrl) {
             console.log(`🗑️ 기존 Webhook 삭제: ID=${hook.id}`);
-            await octokit.repos.deleteWebhook({ owner, repo, hook_id: hook.id });
+            await octokit.repos.deleteWebhook({
+              owner,
+              repo,
+              hook_id: hook.id,
+            });
           }
         }
       }
     } catch (listError) {
       console.log(`ℹ️ 기존 Webhook 확인 실패 (무시): ${listError.message}`);
     }
-    
+
     const webhookResponse = await octokit.repos.createWebhook({
       owner,
       repo,
@@ -73,8 +84,12 @@ async function connectTaskGitHubRepository(
     });
     webhookId = webhookResponse.data.id;
     console.log(`✅ Webhook 생성 성공: ID=${webhookId}`);
-    console.log(`🔐 GitHub에 전달된 Secret: ${webhookSecret.substring(0, 10)}... (길이: ${webhookSecret.length})`);
-    console.log(`💾 DB에 저장할 Secret: ${webhookSecret.substring(0, 10)}... (길이: ${webhookSecret.length})`);
+    console.log(
+      `🔐 GitHub에 전달된 Secret: ${webhookSecret.substring(0, 10)}... (길이: ${webhookSecret.length})`
+    );
+    console.log(
+      `💾 DB에 저장할 Secret: ${webhookSecret.substring(0, 10)}... (길이: ${webhookSecret.length})`
+    );
   } catch (webhookError) {
     console.error("❌ Webhook 생성 오류:", {
       message: webhookError.message,
@@ -93,8 +108,12 @@ async function connectTaskGitHubRepository(
   // Webhook 생성이 실패한 경우 경고
   if (!webhookId) {
     console.warn(`⚠️ Webhook 생성 실패: webhookId가 null입니다.`);
-    console.warn(`⚠️ GitHub 레포지토리에 webhook이 생성되지 않았을 수 있습니다.`);
-    console.warn(`⚠️ 수동으로 webhook을 생성하거나, 레포지토리를 다시 연결해야 합니다.`);
+    console.warn(
+      `⚠️ GitHub 레포지토리에 webhook이 생성되지 않았을 수 있습니다.`
+    );
+    console.warn(
+      `⚠️ 수동으로 webhook을 생성하거나, 레포지토리를 다시 연결해야 합니다.`
+    );
   }
 
   const repository = await prismaClient.taskGitHubRepository.create({
@@ -142,14 +161,14 @@ const isValidStatusTransition = (
   // 하지만 팀장급 이상은 검토 요청 불가 (참여자만 검토 요청 가능)
   if (newStatus === "REVIEW") {
     // 팀장급 이상은 검토 요청 불가
-    if (["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(userRole)) {
+    if (["TEAM_LEAD"].includes(userRole)) {
       return false;
     }
     // 담당자 또는 참여자는 허용 (실제 참여자 확인은 API 엔드포인트에서 수행)
     // 여기서는 상태 전이 검증으로 진행
   } else if (newStatus === "ENDING") {
     // ENDING은 항상 팀장 이상만 가능 (담당자 예외 없음)
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(userRole)) {
+    if (!["TEAM_LEAD"].includes(userRole)) {
       return false;
     }
   }
@@ -164,7 +183,7 @@ router.get("/", async (req, res) => {
     const { userId, role, teamName } = req.user;
     let where = {};
 
-    if (role === "TEAM_LEAD" || role === "MANAGER" || role === "DIRECTOR") {
+    if (role === "TEAM_LEAD") {
       where = { teamId: teamName };
     } else {
       // ✅ 일반 팀원: 담당자이거나 참여자인 업무 모두 조회
@@ -438,7 +457,7 @@ router.put("/:id/status", async (req, res) => {
 
       if (!isAssignee && !isParticipant) {
         // 담당자도 참여자도 아닌 경우, 팀장 이상 권한 필요
-        if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+        if (!["TEAM_LEAD"].includes(role)) {
           return res.status(403).json({
             error:
               "검토 요청 권한이 없습니다. 담당자 또는 참여자만 검토를 요청할 수 있습니다.",
@@ -447,21 +466,21 @@ router.put("/:id/status", async (req, res) => {
       }
 
       // 팀장급 이상은 검토 요청 불가 (참여자만 검토 요청 가능)
-      if (["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+      if (["TEAM_LEAD"].includes(role)) {
         return res.status(403).json({
           error: "팀장급 이상은 검토 요청을 할 수 없습니다.",
         });
       }
     } else if (status === "ENDING") {
       // ENDING은 항상 팀장 이상만 가능
-      if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+      if (!["TEAM_LEAD"].includes(role)) {
         return res.status(403).json({
           error: "종료 권한이 없습니다.",
         });
       }
     } else if (status === "CANCELLED") {
       // CANCELLED는 팀장 이상만 가능
-      if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+      if (!["TEAM_LEAD"].includes(role)) {
         return res.status(403).json({
           error:
             "취소 권한이 없습니다. 팀장급 이상만 업무를 취소할 수 있습니다.",
@@ -751,9 +770,7 @@ router.put("/:id/links", async (req, res) => {
     // 권한 확인: 담당자, 참여자, 또는 팀장 이상만 링크 수정 가능
     const isParticipant = task.participants?.some((p) => p.userId === userId);
     const isAssignee = task.assigneeId === userId;
-    const isTeamLeadOrAbove = ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(
-      role
-    );
+    const isTeamLeadOrAbove = ["TEAM_LEAD"].includes(role);
 
     if (!isAssignee && !isParticipant && !isTeamLeadOrAbove) {
       return res.status(403).json({

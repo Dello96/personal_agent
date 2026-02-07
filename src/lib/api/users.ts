@@ -101,6 +101,7 @@ export interface TeamMember {
   name: string;
   email: string;
   role: string;
+  createdAt: string;
 }
 
 // 팀원 목록 조회

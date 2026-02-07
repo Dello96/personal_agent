@@ -12,7 +12,7 @@ import {
   renameTeam,
   updateTeamMemberRole,
 } from "@/lib/api/team";
-import { getRoleLabel } from "@/lib/utils/roleUtils";
+import { getRoleLabel, getRoleRank } from "@/lib/utils/roleUtils";
 import type { TeamMember } from "@/lib/api/users";
 
 export default function TeamManagementPage() {
@@ -23,24 +23,19 @@ export default function TeamManagementPage() {
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [pendingRoleChange, setPendingRoleChange] = useState<{
+    memberId: string;
+    name: string;
+    fromRole: string;
+    toRole: string;
+  } | null>(null);
   const [inviteLink, setInviteLink] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!user) {
-      router.push("/");
-    }
-  }, [user, router]);
-
-  if (!user) {
-    return null;
-  }
-
-  const isTeamLeadOrAbove = ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(
-    user.role || ""
-  );
+  const isTeamLeadOrAbove = user?.role === "TEAM_LEAD";
 
   const openPermissionModal = () => {
     setShowPermissionModal(true);
@@ -60,7 +55,14 @@ export default function TeamManagementPage() {
       try {
         setLoadingMembers(true);
         const data = await getCurrentTeamMembers();
-        setMembers(data);
+        const sorted = [...data].sort((a, b) => {
+          const rankDiff = getRoleRank(b.role) - getRoleRank(a.role);
+          if (rankDiff !== 0) return rankDiff;
+          return (
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          );
+        });
+        setMembers(sorted);
         setError(null);
       } catch (err: unknown) {
         const message = (err as { message?: string }).message;
@@ -132,6 +134,7 @@ export default function TeamManagementPage() {
           member.id === memberId ? { ...member, role } : member
         )
       );
+      setSuccessMessage("변경이 완료되었습니다!");
     } catch (err: unknown) {
       const message = (err as { message?: string }).message;
       setError(message || "역할 변경에 실패했습니다.");
@@ -141,11 +144,36 @@ export default function TeamManagementPage() {
   };
 
   const roleOptions = [
-    { value: "MEMBER", label: getRoleLabel("MEMBER") },
+    { value: "INTERN", label: getRoleLabel("INTERN") },
+    { value: "STAFF", label: getRoleLabel("STAFF") },
+    { value: "ASSOCIATE", label: getRoleLabel("ASSOCIATE") },
+    { value: "ASSISTANT_MANAGER", label: getRoleLabel("ASSISTANT_MANAGER") },
     { value: "TEAM_LEAD", label: getRoleLabel("TEAM_LEAD") },
-    { value: "MANAGER", label: getRoleLabel("MANAGER") },
-    { value: "DIRECTOR", label: getRoleLabel("DIRECTOR") },
   ];
+
+  const requestRoleChange = (member: TeamMember, nextRole: string) => {
+    if (!isTeamLeadOrAbove) {
+      openPermissionModal();
+      return;
+    }
+    if (member.role === nextRole) return;
+    setPendingRoleChange({
+      memberId: member.id,
+      name: member.name,
+      fromRole: member.role,
+      toRole: nextRole,
+    });
+  };
+
+  useEffect(() => {
+    if (!user) {
+      router.push("/");
+    }
+  }, [user, router]);
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <AppLayout
@@ -211,7 +239,7 @@ export default function TeamManagementPage() {
                   : "bg-gray-300 cursor-not-allowed"
               } ${isRenaming ? "opacity-50" : ""}`}
             >
-              {isRenaming ? "변경 중..." : "팀명 변경"}
+              {isRenaming ? "변경 중..." : "팀 변경"}
             </button>
           </div>
         </div>
@@ -242,7 +270,7 @@ export default function TeamManagementPage() {
                     <select
                       value={member.role}
                       onChange={(e) =>
-                        handleRoleChange(member.id, e.target.value)
+                        requestRoleChange(member, e.target.value)
                       }
                       disabled={roleUpdatingId === member.id}
                       className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
@@ -285,6 +313,57 @@ export default function TeamManagementPage() {
             <button
               type="button"
               onClick={() => setShowPermissionModal(false)}
+              className="w-full px-4 py-2 bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A]"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pendingRoleChange && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-sm">
+            <h3 className="text-lg font-bold text-gray-800 mb-2">
+              직급 변경 확인
+            </h3>
+            <p className="text-sm text-gray-600 mb-6">
+              {pendingRoleChange.name}님의 직급을{" "}
+              {getRoleLabel(pendingRoleChange.fromRole)} →{" "}
+              {getRoleLabel(pendingRoleChange.toRole)} 로 변경할까요?
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  const { memberId, toRole } = pendingRoleChange;
+                  setPendingRoleChange(null);
+                  await handleRoleChange(memberId, toRole);
+                }}
+                className="flex-1 px-4 py-2 bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A]"
+              >
+                예
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingRoleChange(null)}
+                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-gray-600 hover:text-[#7F55B1]"
+              >
+                아니오
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-sm">
+            <h3 className="text-lg font-bold text-gray-800 mb-2">완료</h3>
+            <p className="text-sm text-gray-600 mb-6">{successMessage}</p>
+            <button
+              type="button"
+              onClick={() => setSuccessMessage(null)}
               className="w-full px-4 py-2 bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A]"
             >
               확인

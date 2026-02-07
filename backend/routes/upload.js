@@ -11,7 +11,7 @@ router.use(authenticate);
 const storage = multer.memoryStorage();
 
 // 파일 필터: 이미지만 허용
-const fileFilter = (req, file, cb) => {
+const imageFileFilter = (req, file, cb) => {
   // 허용할 이미지 MIME 타입
   const allowedMimes = [
     "image/jpeg",
@@ -31,12 +31,44 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+const chatFileFilter = (req, file, cb) => {
+  const allowedMimes = [
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+  ];
+
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error(
+        "이미지/영상만 업로드 가능합니다. (JPEG, PNG, GIF, WebP, MP4, WebM, MOV)"
+      ),
+      false
+    );
+  }
+};
+
 // Multer 미들웨어 설정
 const upload = multer({
   storage: storage,
-  fileFilter: fileFilter,
+  fileFilter: imageFileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB 제한
+  },
+});
+
+const chatUpload = multer({
+  storage: storage,
+  fileFilter: chatFileFilter,
+  limits: {
+    fileSize: 20 * 1024 * 1024, // 20MB 제한
   },
 });
 
@@ -132,6 +164,55 @@ router.post("/profile", upload.single("image"), async (req, res) => {
 
     res.status(500).json({
       error: "이미지 업로드에 실패했습니다.",
+      details:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+});
+
+/**
+ * POST /api/upload/chat
+ * 채팅 이미지/영상 업로드
+ */
+router.post("/chat", chatUpload.array("files", 5), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: "파일이 필요합니다." });
+    }
+
+    const uploadResults = await Promise.all(
+      req.files.map(async (file) => {
+        const fileUrl = await uploadToS3(file, "chat", null);
+        return {
+          url: fileUrl,
+          type: file.mimetype.startsWith("video") ? "video" : "image",
+          name: file.originalname,
+          size: file.size,
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      files: uploadResults,
+      count: uploadResults.length,
+      message: "첨부파일이 업로드되었습니다.",
+    });
+  } catch (error) {
+    console.error("채팅 파일 업로드 오류:", error);
+    if (error instanceof multer.MulterError) {
+      if (error.code === "LIMIT_FILE_SIZE") {
+        return res
+          .status(400)
+          .json({ error: "파일 크기는 20MB를 초과할 수 없습니다." });
+      }
+      return res
+        .status(400)
+        .json({ error: `파일 업로드 오류: ${error.message}` });
+    }
+
+    res.status(500).json({
+      error: "파일 업로드에 실패했습니다.",
       details:
         process.env.NODE_ENV === "development" ? error.message : undefined,
     });

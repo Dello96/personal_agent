@@ -53,7 +53,7 @@ export default function AppLayout({
       } else if (message.type === "leave_request" && message.data) {
         // 연차/휴가 신청 알림 (팀장 이상만)
         const { role } = user;
-        if (["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+        if (role === "TEAM_LEAD") {
           const store = useNotificationStore.getState();
           store.setHasPendingLeaveRequest(true);
           store.setPendingLeaveRequestCount(store.pendingLeaveRequestCount + 1);

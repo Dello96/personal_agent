@@ -5,7 +5,7 @@ import { User as ApiUser } from "@/lib/api/users";
 // 사용자 정보 타입 정의
 // ApiUser를 기반으로 하되 role만 더 엄격하게, createdAt/updatedAt는 선택적으로
 type User = Omit<ApiUser, "role" | "createdAt" | "updatedAt"> & {
-  role: "MEMBER" | "TEAM_LEAD" | "MANAGER" | "DIRECTOR";
+  role: "INTERN" | "STAFF" | "ASSOCIATE" | "ASSISTANT_MANAGER" | "TEAM_LEAD";
   createdAt?: string;
   updatedAt?: string;
 };

@@ -161,7 +161,11 @@ router.get("/connection", async (req, res) => {
         subscriptions: true,
       },
     });
-    if (!connection) {
+    if (
+      !connection ||
+      ((connection.subscriptions?.length ?? 0) === 0 &&
+        connection.figmaWebhookId == null)
+    ) {
       return res.status(404).json({ error: "연결된 Figma가 없습니다." });
     }
     // accessToken/passcode는 반환하지 않음
@@ -194,13 +198,15 @@ router.get("/connection", async (req, res) => {
 router.post("/connection", async (req, res) => {
   try {
     const { teamName, role } = req.user;
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+    if (!["TEAM_LEAD"].includes(role)) {
       return res
         .status(403)
         .json({ error: "팀장급 이상만 Figma를 연결할 수 있습니다." });
     }
 
     const { accessToken, context, contextId } = req.body;
+    const trimmedAccessToken =
+      typeof accessToken === "string" ? accessToken.trim() : "";
     const rawEventTypes = Array.isArray(req.body.eventTypes)
       ? req.body.eventTypes
       : req.body.eventType
@@ -214,7 +220,12 @@ router.post("/connection", async (req, res) => {
       )
     );
 
-    if (!accessToken || !context || !contextId || eventTypes.length === 0) {
+    if (
+      !trimmedAccessToken ||
+      !context ||
+      !contextId ||
+      eventTypes.length === 0
+    ) {
       return res.status(400).json({
         error: "accessToken, context, contextId, eventTypes 는 필수입니다.",
       });
@@ -230,75 +241,13 @@ router.post("/connection", async (req, res) => {
     const endpoint = `${BACKEND_URL}/api/figma/webhook`;
     const passcode = require("crypto").randomBytes(24).toString("hex");
 
-    const existing = await prisma.figmaTeamConnection.findUnique({
-      where: { teamId: teamName },
-      include: { subscriptions: true },
-    });
-
-    if (existing) {
-      const tokenForDelete = existing.accessToken || accessToken;
-      for (const sub of existing.subscriptions) {
-        try {
-          await fetch(
-            `https://api.figma.com/v2/webhooks/${sub.figmaWebhookId}`,
-            {
-              method: "DELETE",
-              headers: { Authorization: `Bearer ${tokenForDelete}` },
-            }
-          );
-        } catch (err) {
-          console.warn("기존 Figma webhook 삭제 실패:", sub.figmaWebhookId);
-        }
-      }
-      if (existing.figmaWebhookId != null) {
-        try {
-          await fetch(
-            `https://api.figma.com/v2/webhooks/${existing.figmaWebhookId}`,
-            {
-              method: "DELETE",
-              headers: { Authorization: `Bearer ${tokenForDelete}` },
-            }
-          );
-        } catch (err) {
-          console.warn(
-            "레거시 Figma webhook 삭제 실패:",
-            existing.figmaWebhookId
-          );
-        }
-      }
-      await prisma.figmaWebhookSubscription.deleteMany({
-        where: { connectionId: existing.id },
-      });
-    }
-
-    const connection = await prisma.figmaTeamConnection.upsert({
-      where: { teamId: teamName },
-      update: {
-        passcode,
-        accessToken,
-        context,
-        contextId,
-        eventType: eventTypes.join(","),
-        isActive: true,
-      },
-      create: {
-        teamId: teamName,
-        passcode,
-        accessToken,
-        context,
-        contextId,
-        eventType: eventTypes.join(","),
-        isActive: true,
-      },
-    });
-
     const createdWebhooks = [];
     for (const type of eventTypes) {
       const figmaRes = await fetch("https://api.figma.com/v2/webhooks", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
+          "X-Figma-Token": trimmedAccessToken,
         },
         body: JSON.stringify({
           event_type: type,
@@ -317,7 +266,7 @@ router.post("/connection", async (req, res) => {
           try {
             await fetch(`https://api.figma.com/v2/webhooks/${created.id}`, {
               method: "DELETE",
-              headers: { Authorization: `Bearer ${accessToken}` },
+              headers: { "X-Figma-Token": trimmedAccessToken },
             });
           } catch (cleanupErr) {
             console.warn("Figma webhook 롤백 실패:", created.id);
@@ -333,7 +282,38 @@ router.post("/connection", async (req, res) => {
       createdWebhooks.push({ id: figmaWebhook.id, eventType: type });
     }
 
+    const existing = await prisma.figmaTeamConnection.findUnique({
+      where: { teamId: teamName },
+      include: { subscriptions: true },
+    });
+
+    const connection = await prisma.figmaTeamConnection.upsert({
+      where: { teamId: teamName },
+      update: {
+        passcode,
+        accessToken: trimmedAccessToken,
+        context,
+        contextId,
+        eventType: eventTypes.join(","),
+        isActive: true,
+      },
+      create: {
+        teamId: teamName,
+        passcode,
+        accessToken: trimmedAccessToken,
+        context,
+        contextId,
+        eventType: eventTypes.join(","),
+        isActive: true,
+      },
+    });
+
     if (createdWebhooks.length > 0) {
+      if (existing) {
+        await prisma.figmaWebhookSubscription.deleteMany({
+          where: { connectionId: existing.id },
+        });
+      }
       await prisma.figmaWebhookSubscription.createMany({
         data: createdWebhooks.map((w) => ({
           connectionId: connection.id,
@@ -347,6 +327,39 @@ router.post("/connection", async (req, res) => {
         where: { id: connection.id },
         data: { figmaWebhookId: createdWebhooks[0].id },
       });
+    }
+
+    if (existing) {
+      const tokenForDelete = existing.accessToken || trimmedAccessToken;
+      for (const sub of existing.subscriptions) {
+        try {
+          await fetch(
+            `https://api.figma.com/v2/webhooks/${sub.figmaWebhookId}`,
+            {
+              method: "DELETE",
+              headers: { "X-Figma-Token": tokenForDelete },
+            }
+          );
+        } catch (err) {
+          console.warn("기존 Figma webhook 삭제 실패:", sub.figmaWebhookId);
+        }
+      }
+      if (existing.figmaWebhookId != null) {
+        try {
+          await fetch(
+            `https://api.figma.com/v2/webhooks/${existing.figmaWebhookId}`,
+            {
+              method: "DELETE",
+              headers: { "X-Figma-Token": tokenForDelete },
+            }
+          );
+        } catch (err) {
+          console.warn(
+            "레거시 Figma webhook 삭제 실패:",
+            existing.figmaWebhookId
+          );
+        }
+      }
     }
 
     const updatedConnection = await prisma.figmaTeamConnection.findUnique({
@@ -392,7 +405,7 @@ router.post("/connection", async (req, res) => {
 router.delete("/connection", async (req, res) => {
   try {
     const { teamName, role } = req.user;
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+    if (!["TEAM_LEAD"].includes(role)) {
       return res.status(403).json({ error: "권한이 없습니다." });
     }
 
@@ -410,7 +423,7 @@ router.delete("/connection", async (req, res) => {
           `https://api.figma.com/v2/webhooks/${sub.figmaWebhookId}`,
           {
             method: "DELETE",
-            headers: { Authorization: `Bearer ${connection.accessToken}` },
+            headers: { "X-Figma-Token": connection.accessToken },
           }
         );
         if (!delRes.ok) {
@@ -422,7 +435,7 @@ router.delete("/connection", async (req, res) => {
         `https://api.figma.com/v2/webhooks/${connection.figmaWebhookId}`,
         {
           method: "DELETE",
-          headers: { Authorization: `Bearer ${connection.accessToken}` },
+          headers: { "X-Figma-Token": connection.accessToken },
         }
       );
       if (!delRes.ok) {

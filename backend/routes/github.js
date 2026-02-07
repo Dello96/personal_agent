@@ -34,11 +34,9 @@ router.post("/webhook", async (req, res) => {
 
     if (!event) {
       console.error(`[${requestId}] ❌ 필수 헤더 누락: event=${!!event}`);
-      return res
-        .status(400)
-        .json({
-          error: "유효하지 않은 요청입니다. x-github-event 헤더가 필요합니다.",
-        });
+      return res.status(400).json({
+        error: "유효하지 않은 요청입니다. x-github-event 헤더가 필요합니다.",
+      });
     }
 
     // ping 이벤트는 서명 검증 없이 처리
@@ -52,12 +50,10 @@ router.post("/webhook", async (req, res) => {
       console.error(
         `[${requestId}] ❌ 서명 헤더 누락: signature=${!!signature}`
       );
-      return res
-        .status(400)
-        .json({
-          error:
-            "유효하지 않은 요청입니다. x-hub-signature-256 헤더가 필요합니다.",
-        });
+      return res.status(400).json({
+        error:
+          "유효하지 않은 요청입니다. x-hub-signature-256 헤더가 필요합니다.",
+      });
     }
 
     // 요청 본문 파싱 (express.raw()로 Buffer 형태로 받음)
@@ -313,7 +309,7 @@ router.post("/repositories", async (req, res) => {
     const { userId, teamName, role } = req.user;
 
     // 팀장 이상만 레포지토리 연결 가능
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+    if (!["TEAM_LEAD"].includes(role)) {
       return res.status(403).json({
         error:
           "권한이 없습니다. 팀장급 이상만 레포지토리를 연결할 수 있습니다.",
@@ -448,7 +444,7 @@ router.delete("/repositories/:id", async (req, res) => {
     const { userId, teamName, role } = req.user;
 
     // 팀장 이상만 연결 해제 가능
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+    if (!["TEAM_LEAD"].includes(role)) {
       return res.status(403).json({
         error: "권한이 없습니다.",
       });

@@ -7,14 +7,19 @@ import { register, checkEmail } from "@/lib/api/auth";
 import { useAuthStore } from "@/app/stores/authStore";
 
 const ROLES = [
-  { value: "MEMBER", label: "팀원", description: "일반 팀원으로 참여합니다" },
+  { value: "INTERN", label: "인턴", description: "프로젝트에 참여합니다" },
+  { value: "STAFF", label: "사원", description: "프로젝트에 참여합니다" },
+  { value: "ASSOCIATE", label: "주임", description: "프로젝트에 참여합니다" },
+  {
+    value: "ASSISTANT_MANAGER",
+    label: "대리",
+    description: "프로젝트에 참여합니다",
+  },
   {
     value: "TEAM_LEAD",
     label: "팀장",
     description: "팀을 관리하고 업무를 배정합니다",
   },
-  { value: "MANAGER", label: "매니저", description: "여러 팀을 총괄합니다" },
-  { value: "DIRECTOR", label: "임원", description: "전체 조직을 관리합니다" },
 ] as const;
 
 export default function RegisterPage() {
@@ -24,7 +29,12 @@ export default function RegisterPage() {
     email: "",
     password: "",
     passwordConfirm: "",
-    role: "MEMBER" as "MEMBER" | "TEAM_LEAD" | "MANAGER" | "DIRECTOR",
+    role: "INTERN" as
+      | "INTERN"
+      | "STAFF"
+      | "ASSOCIATE"
+      | "ASSISTANT_MANAGER"
+      | "TEAM_LEAD",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -132,10 +142,11 @@ export default function RegisterPage() {
           name: result.user.name,
           picture: result.user.picture ?? null,
           role: result.user.role as
-            | "MEMBER"
-            | "TEAM_LEAD"
-            | "MANAGER"
-            | "DIRECTOR",
+            | "INTERN"
+            | "STAFF"
+            | "ASSOCIATE"
+            | "ASSISTANT_MANAGER"
+            | "TEAM_LEAD",
           teamName: result.user.teamName ?? null,
         },
         result.token

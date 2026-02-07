@@ -8,7 +8,7 @@ import { TeamMember } from "@/lib/api/users";
 import { getCurrentTeamMembers } from "@/lib/api/team";
 import Image from "next/image";
 import AppLayout from "@/app/components/shared/AppLayout";
-import { getRoleLabel } from "@/lib/utils/roleUtils";
+import { getRoleLabel, getRoleRank } from "@/lib/utils/roleUtils";
 import GithubActivityWidget from "@/app/components/features/github/GithubActivityWidget";
 import FigmaActivityWidget from "@/app/components/features/figma/FigmaActivityWidget";
 
@@ -131,7 +131,14 @@ function HomeContent() {
       try {
         setMembersLoading(true);
         const data = await getCurrentTeamMembers();
-        setTeamMembers(data);
+        const sorted = [...data].sort((a, b) => {
+          const rankDiff = getRoleRank(b.role) - getRoleRank(a.role);
+          if (rankDiff !== 0) return rankDiff;
+          return (
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          );
+        });
+        setTeamMembers(sorted);
       } catch (error) {
         setTeamMembers([]);
         if (process.env.NODE_ENV === "development") {
@@ -166,10 +173,11 @@ function HomeContent() {
             {
               ...user,
               role: user.role as
-                | "MEMBER"
-                | "TEAM_LEAD"
-                | "MANAGER"
-                | "DIRECTOR",
+                | "INTERN"
+                | "STAFF"
+                | "ASSOCIATE"
+                | "ASSISTANT_MANAGER"
+                | "TEAM_LEAD",
             },
             token
           );
@@ -180,7 +188,7 @@ function HomeContent() {
               email: "user@example.com",
               name: "User",
               picture: "picture",
-              role: "MEMBER",
+              role: "INTERN",
               teamName: "TEAMNAME",
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -207,6 +215,8 @@ function HomeContent() {
       router.push("/chat");
     } else if (menu === "진행중인 업무") {
       router.push("/");
+    } else if (menu === "팀 관리") {
+      router.push("/manager/team");
     }
   };
 
@@ -426,7 +436,7 @@ function HomeContent() {
               </div>
 
               {/* 업무 전달 버튼 (팀장 이상만) */}
-              {user.role !== "MEMBER" && (
+              {user.role === "TEAM_LEAD" && (
                 <button
                   onClick={workAssignment}
                   className="px-4 py-2 bg-white text-[#7F55B1] rounded-xl font-medium hover:bg-purple-50 transition-colors text-sm"
@@ -648,7 +658,7 @@ function HomeContent() {
               <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl">
                 <div className="flex items-center gap-2">
                   <span>📝</span>
-                  <span className="text-sm text-gray-600">검토</span>
+                  <span className="text-sm text-gray-600">리뷰중</span>
                 </div>
                 <span className="font-bold text-blue-600">
                   {reviewTasks.length}건
@@ -669,17 +679,9 @@ function HomeContent() {
           {/* 팀원 목록 (Team) */}
           <div className="bg-white rounded-3xl p-6 shadow-sm">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-semibold text-gray-800">Team</h3>
-              {["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(
-                user?.role || ""
-              ) && (
-                <button
-                  onClick={() => router.push("/manager/team")}
-                  className="text-sm text-[#7F55B1] hover:text-[#6A46A0] font-medium"
-                >
-                  팀 관리
-                </button>
-              )}
+              <h3 className="font-semibold text-gray-800">
+                {user?.teamName || "Team"}
+              </h3>
             </div>
 
             {membersLoading ? (

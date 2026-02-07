@@ -36,7 +36,12 @@ export default function MyPage() {
         setPictureUrl(current.picture || null);
         setUser({
           ...current,
-          role: current.role as "MEMBER" | "TEAM_LEAD" | "MANAGER" | "DIRECTOR",
+          role: current.role as
+            | "INTERN"
+            | "STAFF"
+            | "ASSOCIATE"
+            | "ASSISTANT_MANAGER"
+            | "TEAM_LEAD",
         });
       } catch (err) {
         if (process.env.NODE_ENV === "development") {
@@ -98,7 +103,12 @@ export default function MyPage() {
       const updated = await updateCurrentUser(payload);
       setUser({
         ...updated,
-        role: updated.role as "MEMBER" | "TEAM_LEAD" | "MANAGER" | "DIRECTOR",
+        role: updated.role as
+          | "INTERN"
+          | "STAFF"
+          | "ASSOCIATE"
+          | "ASSISTANT_MANAGER"
+          | "TEAM_LEAD",
       });
       setSuccess("프로필이 업데이트되었습니다.");
     } catch (err: unknown) {

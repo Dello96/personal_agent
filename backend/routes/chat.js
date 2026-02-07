@@ -241,10 +241,14 @@ router.get("/messages", async (req, res) => {
 // 메시지 전송
 router.post("/messages", async (req, res) => {
   try {
-    const { content, roomId, type = "TEAM" } = req.body;
+    const { content, roomId, type = "TEAM", attachments, links } = req.body;
     const { userId, teamName } = req.user;
 
-    if (!content || !content.trim()) {
+    const normalizedContent = typeof content === "string" ? content.trim() : "";
+    const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+    const hasLinks = Array.isArray(links) && links.length > 0;
+
+    if (!normalizedContent && !hasAttachments && !hasLinks) {
       return res.status(400).json({ error: "메시지 내용을 입력해주세요." });
     }
 
@@ -292,7 +296,9 @@ router.post("/messages", async (req, res) => {
       data: {
         chatRoomId: chatRoom.id,
         senderId: userId,
-        content: content.trim(),
+        content: normalizedContent,
+        attachments: hasAttachments ? attachments : null,
+        links: hasLinks ? links : null,
       },
       include: {
         sender: {
@@ -318,7 +324,7 @@ router.post("/messages", async (req, res) => {
         await createNotificationsForUsers(prisma, targets, {
           type: "chat",
           title: "새 팀 채팅 메시지",
-          message: message.content,
+          message: message.content || "첨부파일",
           link: `/chat?roomId=${chatRoom.id}&type=TEAM`,
           chatRoomId: chatRoom.id,
           chatType: "TEAM",
@@ -346,7 +352,7 @@ router.post("/messages", async (req, res) => {
         await createNotificationsForUsers(prisma, targets, {
           type: "chat",
           title: "새 개인 채팅 메시지",
-          message: message.content,
+          message: message.content || "첨부파일",
           link: `/chat?roomId=${chatRoom.id}&type=DIRECT&userId=${userId}`,
           chatRoomId: chatRoom.id,
           chatType: "DIRECT",

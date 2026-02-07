@@ -13,6 +13,19 @@ export interface Message {
   chatRoomId: string;
   senderId: string;
   content: string;
+  clientMessageId?: string;
+  attachments?: Array<{
+    url: string;
+    type: "image" | "video";
+    name?: string;
+    size?: number;
+  }> | null;
+  links?: Array<{
+    url: string;
+    title?: string | null;
+    description?: string | null;
+    image?: string | null;
+  }> | null;
   createdAt: string;
   updatedAt: string;
   sender?: {
@@ -70,6 +83,39 @@ export const sendMessage = async (
     method: "POST",
     body: JSON.stringify({ content, roomId, type }),
   });
+};
+
+export const uploadChatFiles = async (files: File[]) => {
+  const token =
+    typeof window === "undefined"
+      ? null
+      : require("@/app/stores/authStore").useAuthStore.getState().token;
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}/api/upload/chat`,
+    {
+      method: "POST",
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: formData,
+    }
+  );
+
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || "파일 업로드에 실패했습니다.");
+  }
+  return result as {
+    files: Array<{
+      url: string;
+      type: "image" | "video";
+      name?: string;
+      size?: number;
+    }>;
+  };
 };
 
 // 메시지 삭제

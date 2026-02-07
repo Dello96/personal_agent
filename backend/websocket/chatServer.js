@@ -315,9 +315,14 @@ class ChatWebSocketServer {
 
   // 메시지 전송
   async handleSend(ws, user, message) {
-    const { content, roomId, roomType } = message;
+    const { content, roomId, roomType, attachments, links, clientMessageId } =
+      message;
 
-    if (!content || !content.trim()) {
+    const normalizedContent = typeof content === "string" ? content.trim() : "";
+    const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+    const hasLinks = Array.isArray(links) && links.length > 0;
+
+    if (!normalizedContent && !hasAttachments && !hasLinks) {
       ws.send(
         JSON.stringify({
           type: "error",
@@ -387,7 +392,9 @@ class ChatWebSocketServer {
       data: {
         chatRoomId: chatRoom.id,
         senderId: user.userId,
-        content: content.trim(),
+        content: normalizedContent,
+        attachments: hasAttachments ? attachments : null,
+        links: hasLinks ? links : null,
       },
       include: {
         sender: {
@@ -415,7 +422,7 @@ class ChatWebSocketServer {
         await createNotificationsForUsers(prisma, targets, {
           type: "chat",
           title: "새 팀 채팅 메시지",
-          message: savedMessage.content,
+          message: savedMessage.content || "첨부파일",
           link: `/chat?roomId=${chatRoom.id}&type=TEAM`,
           chatRoomId: chatRoom.id,
           chatType: "TEAM",
@@ -436,7 +443,7 @@ class ChatWebSocketServer {
         await createNotificationsForUsers(prisma, targets, {
           type: "chat",
           title: "새 개인 채팅 메시지",
-          message: savedMessage.content,
+          message: savedMessage.content || "첨부파일",
           link: `/chat?roomId=${chatRoom.id}&type=DIRECT&userId=${user.userId}`,
           chatRoomId: chatRoom.id,
           chatType: "DIRECT",
@@ -454,7 +461,10 @@ class ChatWebSocketServer {
     const clients = chatRooms.get(chatRoom.id) || new Set();
     const messageData = {
       type: "message",
-      data: savedMessage,
+      data: {
+        ...savedMessage,
+        ...(clientMessageId ? { clientMessageId } : {}),
+      },
     };
 
     clients.forEach((client) => {

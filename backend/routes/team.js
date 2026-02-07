@@ -8,7 +8,7 @@ router.use(authenticate);
 // 팀 대시보드 (팀장만)
 router.get("/dashboard", async (req, res) => {
   try {
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(req.user.role)) {
+    if (!["TEAM_LEAD"].includes(req.user.role)) {
       return res.status(403).json({ error: "권한이 없습니다" });
     }
 
@@ -32,13 +32,19 @@ router.put("/members/:memberId/role", async (req, res) => {
     const { role } = req.body;
     const { teamName, role: requesterRole, userId } = req.user;
 
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(requesterRole)) {
+    if (!["TEAM_LEAD"].includes(requesterRole)) {
       return res.status(403).json({ error: "권한이 없습니다" });
     }
     if (!teamName) {
       return res.status(400).json({ error: "팀에 속해있지 않습니다." });
     }
-    const allowedRoles = ["MEMBER", "TEAM_LEAD", "MANAGER", "DIRECTOR"];
+    const allowedRoles = [
+      "INTERN",
+      "STAFF",
+      "ASSOCIATE",
+      "ASSISTANT_MANAGER",
+      "TEAM_LEAD",
+    ];
     if (!allowedRoles.includes(role)) {
       return res.status(400).json({ error: "유효하지 않은 역할입니다." });
     }
@@ -51,9 +57,9 @@ router.put("/members/:memberId/role", async (req, res) => {
       return res.status(404).json({ error: "팀원을 찾을 수 없습니다." });
     }
 
-    if (targetUser.id === userId && role === "MEMBER") {
+    if (targetUser.id === userId && role !== "TEAM_LEAD") {
       return res.status(400).json({
-        error: "본인의 역할을 팀원으로 변경할 수 없습니다.",
+        error: "본인의 역할을 팀장에서 다른 직급으로 변경할 수 없습니다.",
       });
     }
 
@@ -76,13 +82,13 @@ router.put("/members/:memberId/role", async (req, res) => {
   }
 });
 
-// 팀명 변경 (팀장 이상)
+// 팀 변경 (팀장 이상)
 router.put("/rename", async (req, res) => {
   try {
     const { newName } = req.body;
     const { teamName, role } = req.user;
 
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+    if (!["TEAM_LEAD"].includes(role)) {
       return res.status(403).json({ error: "권한이 없습니다" });
     }
     if (!teamName) {
@@ -133,7 +139,7 @@ router.put("/rename", async (req, res) => {
         data: { teamId: trimmedName },
       });
 
-      await tx.githubRepository.updateMany({
+      await tx.gitHubRepository.updateMany({
         where: { teamId: teamName },
         data: { teamId: trimmedName },
       });
@@ -168,7 +174,7 @@ router.post("/create", async (req, res) => {
     const { userId, role, teamName } = req.user;
 
     // 1. 권한 체크: 팀장급 이상만 팀 생성 가능
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+    if (!["TEAM_LEAD"].includes(role)) {
       return res.status(403).json({
         error:
           "팀 생성 권한이 없습니다. 팀장급 이상만 팀을 생성할 수 있습니다.",

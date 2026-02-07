@@ -42,10 +42,11 @@ export default function TeamCreate() {
           {
             ...updatedUser,
             role: updatedUser.role as
-              | "MEMBER"
-              | "TEAM_LEAD"
-              | "MANAGER"
-              | "DIRECTOR",
+              | "INTERN"
+              | "STAFF"
+              | "ASSOCIATE"
+              | "ASSISTANT_MANAGER"
+              | "TEAM_LEAD",
           },
           token
         );

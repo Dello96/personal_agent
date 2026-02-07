@@ -12,7 +12,7 @@ model User {
   email     String   @unique
   name      String
   picture   String?
-  role      Role     @default(MEMBER)
+  role      Role     @default(INTERN)
   teamName  String?
   team      Team?    @relation("TeamMembers", fields: [teamName], references: [teamName])
   createdAt DateTime @default(now())
@@ -102,10 +102,11 @@ model TaskStatusHistory {
 }
 
 enum Role {
-  MEMBER
+  INTERN
+  STAFF
+  ASSOCIATE
+  ASSISTANT_MANAGER
   TEAM_LEAD
-  MANAGER
-  DIRECTOR
 }
 
 enum TaskStatus {
@@ -200,6 +201,8 @@ model Message {
   chatRoomId String
   senderId   String
   content    String
+  attachments Json?
+  links       Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

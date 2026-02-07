@@ -112,9 +112,7 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
     if (!task || !user) return;
 
     // 팀장급 이상은 NOW 상태에서 ON 버튼을 눌러도 상태 변경 안 함
-    const isTeamLeadOrAbove = ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(
-      user.role || ""
-    );
+    const isTeamLeadOrAbove = ["TEAM_LEAD"].includes(user.role || "");
     if (isTeamLeadOrAbove && task.status === "NOW") {
       // 상태 변경 없이 그냥 반환
       return;
@@ -163,9 +161,7 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
       }
 
       // 팀장급 이상은 검토 요청 불가
-      const isTeamLeadOrAbove = ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(
-        user.role || ""
-      );
+      const isTeamLeadOrAbove = ["TEAM_LEAD"].includes(user.role || "");
       if (isTeamLeadOrAbove) {
         alert("팀장급 이상은 검토 요청을 할 수 없습니다.");
         return;
@@ -193,7 +189,7 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
     if (!task) return;
 
     // 권한 확인
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "")) {
+    if (!["TEAM_LEAD"].includes(user?.role || "")) {
       alert("검토 권한이 없습니다.");
       return;
     }
@@ -226,7 +222,7 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
     if (!task) return;
 
     // 권한 확인
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(user?.role || "")) {
+    if (!["TEAM_LEAD"].includes(user?.role || "")) {
       alert("검토 권한이 없습니다.");
       return;
     }
@@ -365,11 +361,7 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
               (p) => p.userId === user?.id
             );
             const isAssignee = task?.assigneeId === user?.id;
-            const isTeamLeadOrAbove = [
-              "TEAM_LEAD",
-              "MANAGER",
-              "DIRECTOR",
-            ].includes(user?.role || "");
+            const isTeamLeadOrAbove = ["TEAM_LEAD"].includes(user?.role || "");
             const canToggle = isParticipant || isAssignee;
 
             // NOW 상태: 팀장급 이상은 ON, 취소 버튼 / 참여자는 ON, 검토요청 버튼
@@ -756,11 +748,9 @@ export default function TaskDetail({ taskId }: TaskDetailProps) {
                   (p) => p.userId === user?.id
                 );
                 const isAssignee = task?.assigneeId === user?.id;
-                const isTeamLeadOrAbove = [
-                  "TEAM_LEAD",
-                  "MANAGER",
-                  "DIRECTOR",
-                ].includes(user?.role || "");
+                const isTeamLeadOrAbove = ["TEAM_LEAD"].includes(
+                  user?.role || ""
+                );
                 const canEdit =
                   isParticipant || isAssignee || isTeamLeadOrAbove;
 

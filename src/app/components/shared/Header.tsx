@@ -22,10 +22,11 @@ export default function Header() {
 
   const getRoleLabel = (role: string) => {
     const roleMap: Record<string, string> = {
-      MEMBER: "일반 사용자",
+      INTERN: "인턴",
+      STAFF: "사원",
+      ASSOCIATE: "주임",
+      ASSISTANT_MANAGER: "대리",
       TEAM_LEAD: "팀장",
-      MANAGER: "매니저",
-      DIRECTOR: "임원",
     };
     return roleMap[role] || role;
   };

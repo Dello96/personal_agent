@@ -5,7 +5,7 @@ export interface RegisterData {
   name: string;
   email: string;
   password: string;
-  role: "MEMBER" | "TEAM_LEAD" | "MANAGER" | "DIRECTOR";
+  role: "INTERN" | "STAFF" | "ASSOCIATE" | "ASSISTANT_MANAGER" | "TEAM_LEAD";
 }
 
 export interface LoginData {
