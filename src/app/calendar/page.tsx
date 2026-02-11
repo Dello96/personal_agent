@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import AppLayout from "@/app/components/shared/AppLayout";
 import CalendarEventModal from "@/app/components/features/calendar/CalendarEventModal";
 import LeaveRequestApprovalModal from "@/app/components/features/calendar/LeaveRequestApprovalModal";
+import CalendarEventDetailModal from "@/app/components/features/calendar/CalendarEventDetailModal";
 import {
   getCalendarEvents,
   CalendarEvent,
@@ -30,6 +31,10 @@ const CalendarPage = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
+    null
+  );
   const user = useAuthStore((state) => state.user);
   const hasPendingLeaveRequest = useNotificationStore(
     (state) => state.hasPendingLeaveRequest
@@ -118,6 +123,16 @@ const CalendarPage = () => {
     fetchEvents();
   };
 
+  const handleOpenDetailModal = (event: CalendarEvent) => {
+    setSelectedEvent(event);
+    setIsDetailModalOpen(true);
+  };
+
+  const handleCloseDetailModal = () => {
+    setIsDetailModalOpen(false);
+    setSelectedEvent(null);
+  };
+
   return (
     <AppLayout
       activeMenu={activeMenu}
@@ -125,83 +140,88 @@ const CalendarPage = () => {
       sidebarVariant="default"
     >
       {/* 캘린더 컨텐츠 */}
-      <div className="bg-white rounded-3xl shadow-sm p-6">
-        <div className="flex items-center justify-between w-full py-4 mb-4">
-          <div className="flex items-center justify-center">
-            <button
-              className="w-6 h-6 text-gray-600 hover:text-[#7F55B1] transition-colors"
-              type="button"
-              onClick={setPreMonth}
-            >
-              ⬅️
-            </button>
-            <p className="mx-4 mt-1 text-gray-600 font-medium text-lg">
-              {dateToFormatString(today, "YYYY년 MM월")}
-            </p>
-            <button
-              className="w-6 h-6 text-gray-600 hover:text-[#7F55B1] transition-colors"
-              type="button"
-              onClick={setNextMonth}
-            >
-              ➡️
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-              onClick={() => handleOpenModal("MEETING_ROOM")}
-            >
-              회의실예약
-            </button>
-            <button
-              type="button"
-              className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-              onClick={() => handleOpenModal("MEETING")}
-            >
-              미팅예약
-            </button>
-            <button
-              type="button"
-              className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-              onClick={() => handleOpenModal("LEAVE")}
-            >
-              연차 및 휴가 요청
-            </button>
-            {isTeamLeadOrAbove(user?.role || "") && (
+      <div className="h-full flex flex-col min-h-0">
+        <div className="bg-white rounded-3xl shadow-sm p-6 flex flex-col">
+          <div className="flex items-center justify-between w-full py-4 mb-4 shrink-0">
+            <div className="flex items-center justify-center">
+              <button
+                className="w-6 h-6 text-gray-600 hover:text-[#7F55B1] transition-colors"
+                type="button"
+                onClick={setPreMonth}
+              >
+                ⬅️
+              </button>
+              <p className="mx-4 mt-1 text-gray-600 font-medium text-lg">
+                {dateToFormatString(today, "YYYY년 MM월")}
+              </p>
+              <button
+                className="w-6 h-6 text-gray-600 hover:text-[#7F55B1] transition-colors"
+                type="button"
+                onClick={setNextMonth}
+              >
+                ➡️
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="px-3 py-1.5 text-sm bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors font-medium relative"
-                onClick={() => setIsApprovalModalOpen(true)}
+                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                onClick={() => handleOpenModal("MEETING_ROOM")}
               >
-                승인 대기
-                {hasPendingLeaveRequest && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-orange-500 text-white rounded-full text-xs flex items-center justify-center">
-                    !
-                  </span>
-                )}
+                회의실예약
               </button>
-            )}
-            <button
-              type="button"
-              className="px-4 py-2 bg-[#7F55B1] text-white rounded-xl hover:bg-[#6B479A] transition-colors font-medium"
-              onClick={setPresentMonth}
-            >
-              오늘
-            </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                onClick={() => handleOpenModal("MEETING")}
+              >
+                미팅예약
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                onClick={() => handleOpenModal("LEAVE")}
+              >
+                연차 및 휴가 요청
+              </button>
+              {isTeamLeadOrAbove(user?.role || "") && (
+                <button
+                  type="button"
+                  className="px-3 py-1.5 text-sm bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors font-medium relative"
+                  onClick={() => setIsApprovalModalOpen(true)}
+                >
+                  승인 대기
+                  {hasPendingLeaveRequest && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-orange-500 text-white rounded-full text-xs flex items-center justify-center">
+                      !
+                    </span>
+                  )}
+                </button>
+              )}
+              <button
+                type="button"
+                className="px-4 py-2 bg-[#7F55B1] text-white rounded-xl hover:bg-[#6B479A] transition-colors font-medium"
+                onClick={setPresentMonth}
+              >
+                오늘
+              </button>
+            </div>
+          </div>
+          <div className="mt-2">
+            <CustomCalendar
+              today={today}
+              week={week}
+              dayArray={dayArray}
+              isHasSchedule={true}
+              events={events}
+              onEventClick={handleOpenDetailModal}
+              onDateClick={(date) => {
+                setSelectedDate(date);
+                setIsModalOpen(true);
+              }}
+            />
           </div>
         </div>
-        <CustomCalendar
-          today={today}
-          week={week}
-          dayArray={dayArray}
-          isHasSchedule={true}
-          events={events}
-          onDateClick={(date) => {
-            setSelectedDate(date);
-            setIsModalOpen(true);
-          }}
-        />
       </div>
 
       {/* 일정 등록 모달 */}
@@ -224,6 +244,15 @@ const CalendarPage = () => {
           }}
         />
       )}
+
+      {/* 일정 상세 모달 */}
+      <CalendarEventDetailModal
+        isOpen={isDetailModalOpen}
+        event={selectedEvent}
+        onClose={handleCloseDetailModal}
+        onUpdated={fetchEvents}
+        onDeleted={fetchEvents}
+      />
     </AppLayout>
   );
 };

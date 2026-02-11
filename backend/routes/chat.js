@@ -44,12 +44,6 @@ router.get("/direct/:userId", async (req, res) => {
     const { userId: targetUserId } = req.params;
     const { userId: currentUserId } = req.user;
 
-    if (targetUserId === currentUserId) {
-      return res
-        .status(400)
-        .json({ error: "본인과는 개인 채팅을 할 수 없습니다." });
-    }
-
     // 기존 개인 채팅방 찾기 (두 사용자가 모두 참여한 DIRECT 타입 채팅방)
     const existingRooms = await prisma.chatRoom.findMany({
       where: {
@@ -71,9 +65,14 @@ router.get("/direct/:userId", async (req, res) => {
       },
     });
 
-    // 두 사용자가 모두 참여한 채팅방 찾기
+    // 두 사용자가 모두 참여한 채팅방 찾기 (본인 채팅은 1명 참가)
     const existingRoom = existingRooms.find((room) => {
       const participantIds = room.participants.map((p) => p.userId);
+      if (targetUserId === currentUserId) {
+        return (
+          participantIds.includes(currentUserId) && participantIds.length === 1
+        );
+      }
       return (
         participantIds.includes(currentUserId) &&
         participantIds.includes(targetUserId) &&
@@ -90,7 +89,10 @@ router.get("/direct/:userId", async (req, res) => {
       data: {
         type: "DIRECT",
         participants: {
-          create: [{ userId: currentUserId }, { userId: targetUserId }],
+          create:
+            targetUserId === currentUserId
+              ? [{ userId: currentUserId }]
+              : [{ userId: currentUserId }, { userId: targetUserId }],
         },
       },
       include: {

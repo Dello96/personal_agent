@@ -5,6 +5,9 @@ import { useSearchParams, useRouter } from "next/navigation";
 import AppLayout from "@/app/components/shared/AppLayout";
 import { joinTeam } from "@/lib/api/team";
 import { useAuthStore } from "@/app/stores/authStore";
+import TeamJoin from "@/app/components/features/team/TeamJoin";
+
+const PENDING_TEAM_KEY = "pendingInviteTeam";
 
 export default function TeamJoinPage() {
   const searchParams = useSearchParams();
@@ -14,12 +17,12 @@ export default function TeamJoinPage() {
     "loading"
   );
   const [message, setMessage] = useState("팀에 가입 중입니다...");
+  const teamName = searchParams.get("team");
 
   useEffect(() => {
-    const teamName = searchParams.get("team");
     if (!teamName) {
-      setStatus("error");
-      setMessage("초대 링크가 유효하지 않습니다.");
+      setStatus("success");
+      setMessage("");
       return;
     }
 
@@ -37,13 +40,21 @@ export default function TeamJoinPage() {
     };
 
     if (!user) {
-      setStatus("error");
-      setMessage("로그인 후 초대 링크를 다시 열어주세요.");
+      if (typeof window !== "undefined") {
+        localStorage.setItem(PENDING_TEAM_KEY, teamName);
+      }
+      setStatus("success");
+      setMessage("회원가입 후 자동으로 팀에 가입됩니다.");
+      router.push(`/auth/register?invite=${encodeURIComponent(teamName)}`);
       return;
     }
 
     join();
-  }, [searchParams, router, user]);
+  }, [teamName, router, user]);
+
+  if (!teamName) {
+    return <TeamJoin />;
+  }
 
   return (
     <AppLayout sidebarVariant="default" headerProps={{ title: "팀 가입" }}>
@@ -58,9 +69,4 @@ export default function TeamJoinPage() {
       </div>
     </AppLayout>
   );
-}
-import TeamJoin from "@/app/components/features/team/TeamJoin";
-
-export default function TeamJoinPage() {
-  return <TeamJoin />;
 }

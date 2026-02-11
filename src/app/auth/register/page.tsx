@@ -1,10 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { register, checkEmail } from "@/lib/api/auth";
 import { useAuthStore } from "@/app/stores/authStore";
+import { joinTeam } from "@/lib/api/team";
+import { getCurrentUser } from "@/lib/api/users";
+
+const PENDING_TEAM_KEY = "pendingInviteTeam";
 
 const ROLES = [
   { value: "INTERN", label: "인턴", description: "프로젝트에 참여합니다" },
@@ -39,6 +43,15 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [emailChecked, setEmailChecked] = useState(false);
+  const [inviteTeam, setInviteTeam] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const pendingTeam = localStorage.getItem(PENDING_TEAM_KEY);
+    if (pendingTeam) {
+      setInviteTeam(pendingTeam);
+    }
+  }, []);
 
   // 입력값 변경 핸들러
   const handleChange = (
@@ -152,6 +165,29 @@ export default function RegisterPage() {
         result.token
       );
 
+      if (inviteTeam) {
+        try {
+          await joinTeam(inviteTeam);
+          const updatedUser = await getCurrentUser();
+          if (updatedUser) {
+            useAuthStore.getState().setUser({
+              ...updatedUser,
+              role: updatedUser.role as
+                | "INTERN"
+                | "STAFF"
+                | "ASSOCIATE"
+                | "ASSISTANT_MANAGER"
+                | "TEAM_LEAD",
+            });
+          }
+          if (typeof window !== "undefined") {
+            localStorage.removeItem(PENDING_TEAM_KEY);
+          }
+        } catch (joinError) {
+          throw new Error("초대된 팀 가입에 실패했습니다. 다시 시도해주세요.");
+        }
+      }
+
       // 메인 페이지로 이동
       router.push("/");
     } catch (error) {
@@ -182,6 +218,14 @@ export default function RegisterPage() {
           onSubmit={handleSubmit}
           className="bg-white rounded-2xl shadow-xl p-8 space-y-5"
         >
+          {inviteTeam && (
+            <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
+              초대된 팀: <span className="font-semibold">{inviteTeam}</span>
+              <span className="block text-xs text-violet-600 mt-1">
+                회원가입 완료 후 자동으로 팀에 가입됩니다.
+              </span>
+            </div>
+          )}
           {/* 이름 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

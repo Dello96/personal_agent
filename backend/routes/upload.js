@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
+const path = require("path");
 const authenticate = require("../middleware/auth");
 const { uploadToS3 } = require("../utils/uploadToS3");
 
@@ -71,6 +72,23 @@ const chatUpload = multer({
     fileSize: 20 * 1024 * 1024, // 20MB 제한
   },
 });
+
+const normalizeFilename = (name) => {
+  if (!name || typeof name !== "string") return "attachment";
+  try {
+    const decoded = Buffer.from(name, "latin1").toString("utf8");
+    if (decoded && decoded !== name) return decoded;
+  } catch (error) {
+    // fall through
+  }
+  return name;
+};
+
+const sanitizeFilename = (name) => {
+  const base = normalizeFilename(name).trim();
+  if (!base) return "attachment";
+  return base.replace(/[\\/:*?"<>|]/g, "_");
+};
 
 /**
  * POST /api/upload
@@ -186,7 +204,7 @@ router.post("/chat", chatUpload.array("files", 5), async (req, res) => {
         return {
           url: fileUrl,
           type: file.mimetype.startsWith("video") ? "video" : "image",
-          name: file.originalname,
+          name: sanitizeFilename(file.originalname),
           size: file.size,
         };
       })
@@ -216,6 +234,82 @@ router.post("/chat", chatUpload.array("files", 5), async (req, res) => {
       details:
         process.env.NODE_ENV === "development" ? error.message : undefined,
     });
+  }
+});
+
+/**
+ * GET /api/upload/download
+ * S3 파일 다운로드 프록시
+ */
+router.get("/download", async (req, res) => {
+  try {
+    const { url, name } = req.query;
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "url 파라미터가 필요합니다." });
+    }
+
+    let targetUrl;
+    try {
+      targetUrl = new URL(url);
+    } catch (error) {
+      return res.status(400).json({ error: "유효한 URL이 아닙니다." });
+    }
+
+    if (!["http:", "https:"].includes(targetUrl.protocol)) {
+      return res.status(400).json({ error: "지원하지 않는 URL입니다." });
+    }
+
+    const allowedHosts = new Set();
+    if (process.env.S3_BUCKET_URL) {
+      try {
+        allowedHosts.add(new URL(process.env.S3_BUCKET_URL).hostname);
+      } catch (error) {
+        // ignore
+      }
+    }
+    if (process.env.S3_BUCKET_NAME && process.env.AWS_REGION) {
+      allowedHosts.add(
+        `${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`
+      );
+    }
+
+    if (allowedHosts.size > 0 && !allowedHosts.has(targetUrl.hostname)) {
+      return res.status(400).json({ error: "허용되지 않은 파일 주소입니다." });
+    }
+
+    const response = await fetch(targetUrl.toString(), { redirect: "follow" });
+    if (!response.ok) {
+      return res.status(400).json({ error: "파일을 불러오지 못했습니다." });
+    }
+
+    const filename = sanitizeFilename(
+      typeof name === "string" && name
+        ? name
+        : path.basename(targetUrl.pathname)
+    );
+    const encodedFilename = encodeURIComponent(filename)
+      .replace(/'/g, "%27")
+      .replace(/\(/g, "%28")
+      .replace(/\)/g, "%29");
+
+    const contentType =
+      response.headers.get("content-type") || "application/octet-stream";
+    const contentLength = response.headers.get("content-length");
+
+    res.setHeader("Content-Type", contentType);
+    if (contentLength) {
+      res.setHeader("Content-Length", contentLength);
+    }
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename.replace(/"/g, "")}"; filename*=UTF-8''${encodedFilename}`
+    );
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return res.status(200).send(buffer);
+  } catch (error) {
+    console.error("파일 다운로드 오류:", error);
+    return res.status(500).json({ error: "서버 오류" });
   }
 });
 

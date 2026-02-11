@@ -46,6 +46,10 @@ const ChatPage = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [imageModal, setImageModal] = useState<{
+    url: string;
+    name?: string;
+  } | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -318,6 +322,67 @@ const ChatPage = () => {
     });
   };
 
+  const normalizeFilename = (name?: string) => {
+    if (!name || typeof name !== "string") return "";
+    try {
+      const bytes = Uint8Array.from(name, (char) => char.charCodeAt(0));
+      const decoded = new TextDecoder("utf-8").decode(bytes);
+      if (decoded && decoded !== name) {
+        return decoded;
+      }
+    } catch (error) {
+      // ignore
+    }
+    return name;
+  };
+
+  const getSafeFilename = (name?: string) => {
+    const fallback = "attachment";
+    const normalized = normalizeFilename(name) || fallback;
+    const trimmed = normalized.trim();
+    if (!trimmed) return `${fallback}.jpg`;
+    // Windows/URL 금지 문자 제거
+    const sanitized = trimmed.replace(/[\\/:*?"<>|]/g, "_");
+    return sanitized;
+  };
+
+  const handleDownloadImage = async (url: string, name?: string) => {
+    try {
+      if (!token) {
+        throw new Error("인증 정보가 없습니다.");
+      }
+      const params = new URLSearchParams({
+        url,
+        name: getSafeFilename(name),
+      });
+      const apiBase =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+      const response = await fetch(
+        `${apiBase}/api/upload/download?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error("파일을 불러오는데 실패했습니다.");
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = getSafeFilename(name);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error("다운로드 실패:", error);
+      alert("다운로드에 실패했습니다.");
+    }
+  };
+
   // 스크롤을 맨 아래로
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -340,6 +405,7 @@ const ChatPage = () => {
           id: user.id,
           name: user.name,
           email: user.email,
+          picture: user.picture ?? null,
           role: user.role,
           createdAt: user.createdAt ?? new Date().toISOString(),
         };
@@ -385,6 +451,58 @@ const ChatPage = () => {
     prefetchDirectRooms();
   }, [user, teamMembers]);
 
+  const openTeamChat = async () => {
+    if (!isConnected) {
+      alert("WebSocket 연결이 필요합니다. 잠시만 기다려주세요.");
+      return;
+    }
+
+    if (currentChatRoomId) {
+      wsClientRef.current.leaveRoom(currentChatRoomId);
+    }
+
+    setChatType("TEAM");
+    setSelectedUserId(null);
+    setSelectedUserName(null);
+    setCurrentChatRoomId(null);
+    setMessages([]);
+
+    try {
+      const teamRoom = await getChatRoom();
+      setTeamChatRoomId(teamRoom.id);
+      setCurrentChatRoomId(teamRoom.id);
+      await fetchMessages(false, teamRoom.id, "TEAM");
+      wsClientRef.current.joinRoom("", "TEAM");
+    } catch (error) {
+      console.error("팀 채팅방 로드 실패:", error);
+    }
+  };
+
+  const openSelfChat = async () => {
+    if (!isConnected || !user) {
+      alert("WebSocket 연결이 필요합니다. 잠시만 기다려주세요.");
+      return;
+    }
+
+    if (currentChatRoomId) {
+      wsClientRef.current.leaveRoom(currentChatRoomId);
+    }
+
+    try {
+      const room = await getDirectChatRoom(user.id);
+      setChatType("DIRECT");
+      setSelectedUserId(user.id);
+      setSelectedUserName("내게 쓰기");
+      setCurrentChatRoomId(room.id);
+      setMessages([]);
+      await fetchMessages(false, room.id, "DIRECT");
+      wsClientRef.current.joinRoom(room.id, "DIRECT");
+    } catch (error: any) {
+      console.error("내게 쓰기 채팅방 생성 실패:", error);
+      alert(error.message || "내게 쓰기 채팅방을 생성하는데 실패했습니다.");
+    }
+  };
+
   // 참여자 클릭 핸들러
   const handleMemberClick = async (memberId: string, memberName: string) => {
     if (!isConnected) {
@@ -392,58 +510,22 @@ const ChatPage = () => {
       return;
     }
 
-    if (memberId === user?.id) {
-      // 본인 클릭 시 팀 채팅으로
-      // 기존 채팅방에서 나가기
-      if (currentChatRoomId) {
-        wsClientRef.current.leaveRoom(currentChatRoomId);
-      }
+    if (currentChatRoomId) {
+      wsClientRef.current.leaveRoom(currentChatRoomId);
+    }
 
-      // 상태 변경
-      setChatType("TEAM");
-      setSelectedUserId(null);
-      setSelectedUserName(null);
-      setCurrentChatRoomId(null);
-
-      // 메시지 초기화 및 팀 채팅방 로드
+    try {
+      const room = await getDirectChatRoom(memberId);
+      setChatType("DIRECT");
+      setSelectedUserId(memberId);
+      setSelectedUserName(memberName);
+      setCurrentChatRoomId(room.id);
       setMessages([]);
-      try {
-        const teamRoom = await getChatRoom();
-        setTeamChatRoomId(teamRoom.id);
-        setCurrentChatRoomId(teamRoom.id);
-        await fetchMessages(false, teamRoom.id, "TEAM");
-        // WebSocket으로 팀 채팅방 참여
-        wsClientRef.current.joinRoom("", "TEAM");
-      } catch (error) {
-        console.error("팀 채팅방 로드 실패:", error);
-      }
-    } else {
-      // 다른 사용자 클릭 시 개인 채팅
-      try {
-        // 기존 채팅방에서 나가기
-        if (currentChatRoomId) {
-          wsClientRef.current.leaveRoom(currentChatRoomId);
-        }
-
-        // 개인 채팅방 생성/조회
-        const room = await getDirectChatRoom(memberId);
-
-        // 상태 변경
-        setChatType("DIRECT");
-        setSelectedUserId(memberId);
-        setSelectedUserName(memberName);
-        setCurrentChatRoomId(room.id);
-
-        // 메시지 초기화 및 개인 채팅방 로드
-        setMessages([]);
-        await fetchMessages(false, room.id, "DIRECT");
-
-        // WebSocket으로 개인 채팅방 참여
-        wsClientRef.current.joinRoom(room.id, "DIRECT");
-      } catch (error: any) {
-        console.error("개인 채팅방 생성 실패:", error);
-        alert(error.message || "개인 채팅방을 생성하는데 실패했습니다.");
-      }
+      await fetchMessages(false, room.id, "DIRECT");
+      wsClientRef.current.joinRoom(room.id, "DIRECT");
+    } catch (error: any) {
+      console.error("개인 채팅방 생성 실패:", error);
+      alert(error.message || "개인 채팅방을 생성하는데 실패했습니다.");
     }
   };
 
@@ -688,7 +770,9 @@ const ChatPage = () => {
         } else {
           setChatType("DIRECT");
           setSelectedUserId(queryUserId);
-          setSelectedUserName(resolvedDirectName);
+          setSelectedUserName(
+            queryUserId === user?.id ? "내게 쓰기" : resolvedDirectName
+          );
           setCurrentChatRoomId(queryRoomId);
           setMessages([]);
           await fetchMessages(false, queryRoomId, "DIRECT");
@@ -826,54 +910,112 @@ const ChatPage = () => {
     >
       <div className="bg-white rounded-3xl shadow-sm flex flex-col h-[calc(100vh-200px)]">
         {/* 채팅 헤더 */}
-        <div className="border-b border-gray-200 p-4">
+        <div className="border-b border-gray-200 p-4 space-y-3">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-gray-800 whitespace-nowrap">
               {chatType === "TEAM"
                 ? "팀 채팅"
                 : selectedUserName
-                  ? `${selectedUserName}님과의 채팅`
+                  ? selectedUserName
                   : "개인 채팅"}
             </h2>
-            {/* 참여자 목록 */}
+            <span
+              className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                chatType === "TEAM"
+                  ? "bg-blue-50 text-blue-700"
+                  : selectedUserId === user?.id
+                    ? "bg-violet-50 text-violet-700"
+                    : "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {chatType === "TEAM"
+                ? "팀 채팅"
+                : selectedUserId === user?.id
+                  ? "내게 쓰기"
+                  : "개인 채팅"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openTeamChat}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                chatType === "TEAM"
+                  ? "bg-[#7F55B1] text-white shadow-sm"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              팀 채팅
+            </button>
+            <button
+              onClick={openSelfChat}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                chatType === "DIRECT" && selectedUserId === user?.id
+                  ? "bg-[#7F55B1] text-white shadow-sm"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              {user?.picture ? (
+                <Image
+                  src={user.picture}
+                  alt={user.name}
+                  width={20}
+                  height={20}
+                  className="rounded-full"
+                />
+              ) : (
+                <div className="w-5 h-5 rounded-full bg-[#7F55B1] text-white flex items-center justify-center text-[10px] font-semibold">
+                  {user?.name?.charAt(0) || "나"}
+                </div>
+              )}
+              내게 쓰기
+            </button>
+            <div className="text-xs text-gray-400 ml-1">개인 채팅</div>
             <div className="flex items-center gap-2 overflow-x-auto flex-1 scrollbar-hide">
               {teamMembers.length > 0 ? (
-                teamMembers.map((member) => {
-                  const isCurrentUser = member.id === user?.id;
-                  const roomId = isCurrentUser
-                    ? teamChatRoomId
-                    : directRoomIds[member.id];
-                  const unreadCount = roomId ? unreadByRoomId[roomId] || 0 : 0;
-                  return (
-                    <button
-                      key={member.id}
-                      onClick={() => handleMemberClick(member.id, member.name)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 transition-colors ${
-                        isCurrentUser
-                          ? "bg-[#7F55B1] text-white shadow-sm"
-                          : selectedUserId === member.id
+                teamMembers
+                  .filter((member) => member.id !== user?.id)
+                  .map((member) => {
+                    const roomId = directRoomIds[member.id];
+                    const unreadCount = roomId
+                      ? unreadByRoomId[roomId] || 0
+                      : 0;
+                    return (
+                      <button
+                        key={member.id}
+                        onClick={() =>
+                          handleMemberClick(member.id, member.name)
+                        }
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 transition-colors ${
+                          selectedUserId === member.id
                             ? "bg-[#7F55B1] text-white shadow-sm"
                             : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                      }`}
-                    >
-                      <div
-                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                          isCurrentUser
-                            ? "bg-white/20 text-white"
-                            : "bg-[#7F55B1] text-white"
                         }`}
                       >
-                        {member.name.charAt(0)}
-                      </div>
-                      <span className="text-sm font-medium">{member.name}</span>
-                      {unreadCount > 0 && (
-                        <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">
-                          {unreadCount}
+                        {member.picture ? (
+                          <Image
+                            src={member.picture}
+                            alt={member.name}
+                            width={24}
+                            height={24}
+                            className="rounded-full"
+                          />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-[#7F55B1] text-white flex items-center justify-center text-xs font-medium">
+                            {member.name.charAt(0)}
+                          </div>
+                        )}
+                        <span className="text-sm font-medium">
+                          {member.name}
                         </span>
-                      )}
-                    </button>
-                  );
-                })
+                        {unreadCount > 0 && (
+                          <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
               ) : (
                 <span className="text-sm text-gray-400">로딩 중...</span>
               )}
@@ -1003,8 +1145,17 @@ const ChatPage = () => {
                                       // eslint-disable-next-line @next/next/no-img-element
                                       <img
                                         src={file.url}
-                                        alt={file.name || "attachment"}
-                                        className="max-w-[220px] rounded-lg"
+                                        alt={
+                                          normalizeFilename(file.name) ||
+                                          "attachment"
+                                        }
+                                        className="max-w-[220px] rounded-lg cursor-pointer hover:opacity-90"
+                                        onClick={() =>
+                                          setImageModal({
+                                            url: file.url,
+                                            name: normalizeFilename(file.name),
+                                          })
+                                        }
                                       />
                                     ) : (
                                       <video
@@ -1155,6 +1306,47 @@ const ChatPage = () => {
           </div>
         </form>
       </div>
+      {imageModal && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setImageModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-3xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <span className="text-sm text-gray-700 truncate">
+                {imageModal.name || "첨부 이미지"}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() =>
+                    handleDownloadImage(imageModal.url, imageModal.name)
+                  }
+                  className="text-sm text-[#7F55B1] hover:underline"
+                >
+                  다운로드
+                </button>
+                <button
+                  onClick={() => setImageModal(null)}
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+            <div className="p-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageModal.url}
+                alt={imageModal.name || "첨부 이미지"}
+                className="w-full max-h-[70vh] object-contain rounded-lg"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 };

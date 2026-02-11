@@ -107,7 +107,7 @@ export default function AppLayout({
   }, [token, user, setHasNewMessage, pathname]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex">
+    <div className="bg-gradient-to-br from-violet-50 to-purple-100 flex">
       {/* 좌측 사이드바 */}
       <Sidebar
         activeMenu={activeMenu}
@@ -116,12 +116,12 @@ export default function AppLayout({
       />
 
       {/* 메인 컨텐츠 영역 */}
-      <main className="flex-1 p-4 overflow-auto">
+      <main className="flex-1 p-4 overflow-hidden flex flex-col min-h-0">
         {/* 상단바 */}
         <AppHeader {...headerProps} />
 
         {/* 컨텐츠 */}
-        {children}
+        <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
       </main>
     </div>
   );

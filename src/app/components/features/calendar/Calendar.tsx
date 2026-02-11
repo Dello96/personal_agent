@@ -14,6 +14,7 @@ interface CustomCalendar {
   schedule?: any;
   events?: CalendarEvent[];
   onDateClick?: (date: dayjsType) => void;
+  onEventClick?: (event: CalendarEvent) => void;
 }
 
 const CustomCalendar = ({
@@ -24,6 +25,7 @@ const CustomCalendar = ({
   schedule,
   events = [],
   onDateClick,
+  onEventClick,
 }: CustomCalendar) => {
   schedule = isHasSchedule ? schedule : null;
 
@@ -93,71 +95,80 @@ const CustomCalendar = ({
             </div>
           ))}
         </div>
-        {dayArray.map((week, row) => (
-          <div key={row} className="grid grid-cols-7 divide-x divide-gray-400">
-            {week[row].map((day, column) => {
-              const todayCheck =
-                dateToFormatString(getToday(), "YYYY-MM-DD") ===
-                dateToFormatString(day, "YYYY-MM-DD");
-              const monthCheck =
-                dateToFormatString(today, "YYYY-MM") ===
-                dateToFormatString(day, "YYYY-MM");
-              const dayEvents = getEventsForDate(day);
+        <div className="divide-y divide-gray-400">
+          {dayArray.map((week, row) => (
+            <div
+              key={row}
+              className="grid grid-cols-7 divide-x divide-gray-400"
+            >
+              {week[row].map((day, column) => {
+                const todayCheck =
+                  dateToFormatString(getToday(), "YYYY-MM-DD") ===
+                  dateToFormatString(day, "YYYY-MM-DD");
+                const monthCheck =
+                  dateToFormatString(today, "YYYY-MM") ===
+                  dateToFormatString(day, "YYYY-MM");
+                const dayEvents = getEventsForDate(day);
 
-              return (
-                <div
-                  key={day.unix()}
-                  className="relative h-36 hover:bg-gray-50 transition-colors cursor-pointer"
-                  onClick={() => onDateClick?.(day)}
-                >
+                return (
                   <div
-                    className={`pl-1 py-1 text-left text-xs ${
-                      monthCheck ? "font-normal" : "font-light"
-                    } ${
-                      monthCheck && column === 0
-                        ? "text-red-600"
-                        : monthCheck && column === 6
-                          ? "text-blue-600"
-                          : monthCheck
-                            ? "text-gray-600"
-                            : "text-gray-400"
-                    }`}
+                    key={day.unix()}
+                    className="relative hover:bg-gray-50 transition-colors cursor-pointer flex flex-col h-[clamp(70px,10vh,110px)]"
+                    onClick={() => onDateClick?.(day)}
                   >
-                    {todayCheck ? (
-                      <p className="flex items-center justify-center w-6 h-6 bg-green-600 rounded-full text-white">
-                        {dateToFormatString(day, "D")}
-                      </p>
-                    ) : (
-                      <p className="flex items-center justify-center w-6 h-6 bg-white rounded-full">
-                        {dateToFormatString(day, "D")}
-                      </p>
-                    )}
+                    <div
+                      className={`pl-1 py-1 text-left text-xs ${
+                        monthCheck ? "font-normal" : "font-light"
+                      } ${
+                        monthCheck && column === 0
+                          ? "text-red-600"
+                          : monthCheck && column === 6
+                            ? "text-blue-600"
+                            : monthCheck
+                              ? "text-gray-600"
+                              : "text-gray-400"
+                      }`}
+                    >
+                      {todayCheck ? (
+                        <p className="flex items-center justify-center w-6 h-6 bg-green-600 rounded-full text-white">
+                          {dateToFormatString(day, "D")}
+                        </p>
+                      ) : (
+                        <p className="flex items-center justify-center w-6 h-6 bg-white rounded-full">
+                          {dateToFormatString(day, "D")}
+                        </p>
+                      )}
+                    </div>
+                    {/* 이벤트 표시 */}
+                    <div className="px-1 mt-1 space-y-0.5 flex-1 min-h-0 overflow-y-auto">
+                      {dayEvents.slice(0, 3).map((event) => (
+                        <div
+                          key={event.id}
+                          className={`text-xs px-1.5 py-0.5 rounded truncate ${getEventColor(
+                            event.type,
+                            event.status
+                          )}`}
+                          title={`${getEventLabel(event.type)}: ${event.title}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEventClick?.(event);
+                          }}
+                        >
+                          {getEventLabel(event.type)}: {event.title}
+                        </div>
+                      ))}
+                      {dayEvents.length > 3 && (
+                        <div className="text-xs px-1.5 py-0.5 text-gray-500">
+                          +{dayEvents.length - 3}개 더
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {/* 이벤트 표시 */}
-                  <div className="px-1 mt-1 space-y-0.5 max-h-24 overflow-y-auto">
-                    {dayEvents.slice(0, 3).map((event) => (
-                      <div
-                        key={event.id}
-                        className={`text-xs px-1.5 py-0.5 rounded truncate ${getEventColor(
-                          event.type,
-                          event.status
-                        )}`}
-                        title={`${getEventLabel(event.type)}: ${event.title}`}
-                      >
-                        {getEventLabel(event.type)}: {event.title}
-                      </div>
-                    ))}
-                    {dayEvents.length > 3 && (
-                      <div className="text-xs px-1.5 py-0.5 text-gray-500">
-                        +{dayEvents.length - 3}개 더
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ))}
+                );
+              })}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

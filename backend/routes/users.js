@@ -127,6 +127,7 @@ router.get("/team-members", async (req, res) => {
         id: true,
         name: true,
         email: true,
+        picture: true,
         role: true,
         createdAt: true,
       },

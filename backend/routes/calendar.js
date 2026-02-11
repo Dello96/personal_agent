@@ -401,6 +401,116 @@ router.put("/events/:id/reject", async (req, res) => {
   }
 });
 
+// 일정 수정 (본인이 요청한 일정 또는 팀장 이상만)
+router.put("/events/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, role, teamName } = req.user;
+    const { type, title, description, startDate, endDate, location } = req.body;
+
+    const event = await prisma.calendarEvent.findUnique({
+      where: { id },
+    });
+
+    if (!event) {
+      return res.status(404).json({ error: "일정을 찾을 수 없습니다." });
+    }
+
+    if (event.teamId !== teamName) {
+      return res.status(403).json({ error: "권한이 없습니다." });
+    }
+
+    const canEdit =
+      event.requestedBy === userId || ["TEAM_LEAD"].includes(role);
+    if (!canEdit) {
+      return res.status(403).json({ error: "수정 권한이 없습니다." });
+    }
+
+    if (!type || !title || !startDate || !endDate) {
+      return res.status(400).json({ error: "필수 정보가 누락되었습니다." });
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return res.status(400).json({ error: "날짜 형식이 올바르지 않습니다." });
+    }
+
+    if (start >= end) {
+      return res.status(400).json({
+        error: "종료일시는 시작일시보다 이후여야 합니다.",
+      });
+    }
+
+    if ((type === "MEETING_ROOM" || type === "MEETING") && !location) {
+      return res.status(400).json({
+        error: "회의실/미팅 예약 시 장소를 입력해주세요.",
+      });
+    }
+
+    if (type === "MEETING_ROOM") {
+      const conflictingEvent = await prisma.calendarEvent.findFirst({
+        where: {
+          id: { not: id },
+          type: "MEETING_ROOM",
+          location: location,
+          status: "APPROVED",
+          OR: [
+            {
+              startDate: { lte: start },
+              endDate: { gte: start },
+            },
+            {
+              startDate: { lte: end },
+              endDate: { gte: end },
+            },
+            {
+              startDate: { gte: start },
+              endDate: { lte: end },
+            },
+          ],
+        },
+      });
+
+      if (conflictingEvent) {
+        return res.status(409).json({
+          error: "해당 시간대에 이미 예약된 회의실입니다.",
+        });
+      }
+    }
+
+    const status =
+      type === "MEETING_ROOM" || type === "MEETING" ? "APPROVED" : event.status;
+
+    const updatedEvent = await prisma.calendarEvent.update({
+      where: { id },
+      data: {
+        type,
+        title,
+        description: description || null,
+        startDate: start,
+        endDate: end,
+        location: location || null,
+        status,
+      },
+      include: {
+        requester: {
+          select: { id: true, name: true, email: true },
+        },
+        approver: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
+
+    res.json(updatedEvent);
+  } catch (error) {
+    console.error("일정 수정 오류:", error);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
 // 일정 삭제 (본인이 요청한 일정만)
 router.delete("/events/:id", async (req, res) => {
   try {

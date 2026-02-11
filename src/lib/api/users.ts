@@ -100,6 +100,7 @@ export interface TeamMember {
   id: string;
   name: string;
   email: string;
+  picture: string | null;
   role: string;
   createdAt: string;
 }
