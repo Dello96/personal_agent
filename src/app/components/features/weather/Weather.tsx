@@ -15,20 +15,24 @@ interface WeatherResult {
     name?: string;
     main?: { temp: number; feels_like: number; humidity: number };
     weather?: Array<{ description: string; main: string }>;
+    /** 현재 요청에 사용한 위치(위·경도) */
+    coords?: { latitude: number; longitude: number };
   } | null;
 }
 
 const WEATHER_REFRESH_MS = 10 * 60 * 1000; // 10분
 
 export default function Weather() {
-  const [location, setLocation] = useState<Latlng | null>(null);
+  const [location, setLocation] = useState<Latlng | undefined>(undefined);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<WeatherResult | null>(null);
 
-  // 위치 정확히 파악 (고정밀 + 캐시 짧게)
-  useEffect(() => {
+  const fetchLocation = () => {
     setLocationError(null);
+    setLocation(undefined);
+    setResult(null);
+    setLoading(true);
     navigator.geolocation.getCurrentPosition(
       (response) => {
         const { latitude, longitude } = response.coords;
@@ -42,8 +46,13 @@ export default function Weather() {
         );
         setLoading(false);
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
+  };
+
+  // 마운트 시 위치 한 번 조회 (캐시 없이 최신 위치 사용)
+  useEffect(() => {
+    fetchLocation();
   }, []);
 
   // 위치가 잡히면 자동으로 날씨 조회 + 주기적 갱신
@@ -59,7 +68,6 @@ export default function Weather() {
       try {
         const res = await getWeatherData(location.latitude, location.longitude);
         setResult(res);
-        console.log(res);
       } finally {
         setLoading(false);
       }
@@ -84,7 +92,8 @@ export default function Weather() {
       )}
       {result?.ok === true && result.data && (
         <div className="mt-3 p-3 bg-black/20 rounded-lg">
-          <p className="font-medium">{result.data.name}</p>
+          <p className="font-medium">{result.data.name ?? "현재 위치"}</p>
+
           <p className="text-2xl font-bold">
             {Math.round(result.data.main?.temp ?? 0)}°C
           </p>
@@ -96,6 +105,15 @@ export default function Weather() {
             {result.data.main?.humidity ?? 0}%
           </p>
         </div>
+      )}
+      {location && (
+        <button
+          type="button"
+          onClick={fetchLocation}
+          className="mt-2 text-sm text-gray-400 hover:text-white underline"
+        >
+          위치 새로고침
+        </button>
       )}
     </div>
   );
