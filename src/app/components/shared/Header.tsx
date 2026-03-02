@@ -41,39 +41,35 @@ export default function Header() {
   return (
     <header>
       <div className="bg-blue-100 flex flex-row justify-between items-center">
-        <Link href="/" className="m-8">
+        <Link href="/" className="m-4 md:m-8 text-sm md:text-base">
           Home
         </Link>
 
-        <div className="bg-red-100 flex flex-row items-center gap-4">
+        <div className="bg-red-100 flex flex-row items-center gap-2 md:gap-4">
           {hasHydrated ? (
             isLoggedIn && user ? (
               <>
-                {/* 로그인된 경우 */}
-                <Link href="/mypage" className="m-8">
+                <Link href="/mypage" className="m-4 md:m-8 text-sm md:text-base">
                   마이페이지
                 </Link>
-                <span className="m-8 px-3 py-1 bg-blue-500 text-white rounded text-sm">
+                <span className="m-2 md:m-8 px-2 md:px-3 py-1 bg-blue-500 text-white rounded text-xs md:text-sm">
                   {getRoleLabel(user.role)}
                 </span>
 
-                {/* 로그아웃 버튼 (가장 오른쪽) */}
                 <button
                   onClick={handleLogout}
-                  className="m-8 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                  className="m-2 md:m-8 px-3 md:px-4 py-1.5 md:py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
                 >
                   로그아웃
                 </button>
               </>
             ) : (
-              /* 로그인 안 된 경우 */
-              <Link href="/auth/login" className="m-8">
+              <Link href="/auth/login" className="m-4 md:m-8 text-sm md:text-base">
                 Login
               </Link>
             )
           ) : (
-            /* 하이드레이션 중 */
-            <div className="m-8">로딩 중...</div>
+            <div className="m-4 md:m-8 text-sm">로딩 중...</div>
           )}
         </div>
       </div>

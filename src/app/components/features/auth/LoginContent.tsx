@@ -6,11 +6,19 @@ import Image from "next/image";
 import Link from "next/link";
 import { login } from "@/lib/api/auth";
 import { useAuthStore } from "@/app/stores/authStore";
-import { RouteMatcher } from "next/dist/server/route-matchers/route-matcher";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
-export default function LoginContent() {
+interface LoginContentProps {
+  /** 메인 페이지 이메일 로그인 시 true. 뒤로가기 버튼 표시, 카드 가로 폭 확대 */
+  showBackButton?: boolean;
+  onBack?: () => void;
+}
+
+export default function LoginContent({
+  showBackButton = false,
+  onBack,
+}: LoginContentProps = {}) {
   const router = useRouter();
   const kakaoLoginImageUrl = "/images/kakao_login_medium_narrow.png";
   const googleLoginImageUrl = "/images/web_light_sq_ctn@1x.png";
@@ -81,19 +89,28 @@ export default function LoginContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* 로고 */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-[#7F55B1] flex items-center justify-center gap-2">
-            <span className="text-4xl">📋</span>
-            TaskFlow
-          </h1>
-          <p className="text-gray-600 mt-2">로그인</p>
-        </div>
-
-        {/* 로그인 폼 */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center p-3 sm:p-4">
+      <div
+        className={`w-full ${showBackButton ? "max-w-lg" : "max-w-md"}`}
+      >
+        {/* 로그인 폼 - TaskFlow 포함 흰 배경 카드 */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 md:p-10 space-y-4 md:space-y-6 relative">
+          {showBackButton && onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="absolute top-6 right-6 text-sm text-gray-500 hover:text-gray-700"
+            >
+              뒤로가기
+            </button>
+          )}
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-[#7F55B1] flex items-center justify-center gap-2">
+              <span className="text-4xl">📋</span>
+              TaskFlow
+            </h1>
+            <p className="text-gray-600 mt-2">이메일 로그인</p>
+          </div>
           {/* 일반 로그인 폼 */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

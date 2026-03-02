@@ -908,11 +908,11 @@ const ChatPage = () => {
       onMenuClick={handleLeftMenu}
       sidebarVariant="default"
     >
-      <div className="bg-white rounded-3xl shadow-sm flex flex-col h-[calc(100vh-200px)]">
+      <div className="bg-white rounded-2xl md:rounded-3xl shadow-sm flex flex-col min-h-[300px] h-[calc(100vh-10rem)] md:h-[calc(100vh-200px)] w-full min-w-0">
         {/* 채팅 헤더 */}
-        <div className="border-b border-gray-200 p-4 space-y-3">
-          <div className="flex items-center gap-4">
-            <h2 className="text-xl font-bold text-gray-800 whitespace-nowrap">
+        <div className="border-b border-gray-200 p-3 md:p-4 space-y-2 md:space-y-3 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 md:gap-4 min-w-0">
+            <h2 className="text-lg md:text-xl font-bold text-gray-800 truncate">
               {chatType === "TEAM"
                 ? "팀 채팅"
                 : selectedUserName
@@ -1149,7 +1149,7 @@ const ChatPage = () => {
                                           normalizeFilename(file.name) ||
                                           "attachment"
                                         }
-                                        className="max-w-[220px] rounded-lg cursor-pointer hover:opacity-90"
+                                        className="max-w-full sm:max-w-[220px] rounded-lg cursor-pointer hover:opacity-90"
                                         onClick={() =>
                                           setImageModal({
                                             url: file.url,
@@ -1161,7 +1161,7 @@ const ChatPage = () => {
                                       <video
                                         src={file.url}
                                         controls
-                                        className="max-w-[220px] rounded-lg"
+                                        className="max-w-full sm:max-w-[220px] rounded-lg"
                                       />
                                     )}
                                   </div>
@@ -1187,7 +1187,7 @@ const ChatPage = () => {
                                     <img
                                       src={link.image}
                                       alt={link.title || "link preview"}
-                                      className="w-full max-w-[220px] rounded-md mb-2"
+                                      className="w-full max-w-full sm:max-w-[220px] rounded-md mb-2"
                                     />
                                   )}
                                   <p className="text-sm font-semibold break-words">
@@ -1254,7 +1254,7 @@ const ChatPage = () => {
                       VIDEO
                     </div>
                   )}
-                  <span className="max-w-[120px] truncate">{file.name}</span>
+                  <span className="max-w-[80px] sm:max-w-[120px] truncate">{file.name}</span>
                   <button
                     type="button"
                     onClick={() => removeFile(idx)}

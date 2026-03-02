@@ -110,7 +110,7 @@ export default function TeamJoin() {
             </div>
           ))}
         </div>
-        <div className="w-[100px] border rounded-md border-indigo-600 text-center">
+        <div className="w-16 md:w-[100px] border rounded-md border-indigo-600 text-center text-sm md:text-base">
           <button type="submit">선택완료</button>
         </div>
         <button

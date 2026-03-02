@@ -305,48 +305,40 @@ function HomeContent() {
   }
 
   if (!isLoggedIn) {
+    // 이메일 로그인: TaskFlow 흰 카드 안에 뒤로가기 포함, 가로 폭 넓게
+    if (showEmailLogin) {
+      return (
+        <LoginContent
+          showBackButton
+          onBack={() => setShowEmailLogin(false)}
+        />
+      );
+    }
+
     return (
-      <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center">
-        <div className="bg-white rounded-3xl shadow-xl p-12 text-center max-w-md">
-          <div className="w-20 h-20 bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-2xl mx-auto mb-6 flex items-center justify-center">
-            <span className="text-white text-3xl">📋</span>
+      <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 sm:p-8 md:p-12 text-center max-w-md w-full">
+          <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-xl md:rounded-2xl mx-auto mb-4 md:mb-6 flex items-center justify-center">
+            <span className="text-white text-2xl md:text-3xl">📋</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-800 mb-3">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-800 mb-2 md:mb-3">
             업무 관리 시스템
           </h1>
-          <p className="text-gray-500 mb-8">
+          <p className="text-gray-500 text-sm md:text-base mb-6 md:mb-8">
             로그인하시면 오늘의 업무를 확인할 수 있습니다.
           </p>
 
-          {showEmailLogin ? (
-            <div className="mt-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-gray-800">
-                  이메일 로그인
-                </h2>
-                <button
-                  onClick={() => setShowEmailLogin(false)}
-                  className="text-sm text-gray-500 hover:text-gray-700"
-                >
-                  뒤로가기
-                </button>
-              </div>
-              <LoginContent />
-            </div>
-          ) : (
-            <>
-              {/* 일반 로그인 버튼 */}
-              <button
+          <>
+            <button
                 onClick={handleOpenEmailLogin}
-                className="w-full py-3 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white rounded-xl font-medium hover:from-[#6B479A] hover:to-purple-500 transition-all shadow-lg hover:shadow-xl mb-3"
+                className="w-full py-3 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white rounded-xl font-medium hover:from-[#6B479A] hover:to-purple-500 transition-all shadow-lg hover:shadow-xl mb-3 text-sm md:text-base"
               >
                 이메일로 로그인하기
               </button>
 
-              {/* 회원가입 버튼 */}
               <button
                 onClick={() => router.push("/auth/register")}
-                className="w-full py-3 bg-white border-2 border-[#7F55B1] text-[#7F55B1] rounded-xl font-medium hover:bg-violet-50 transition-all mb-6"
+                className="w-full py-3 bg-white border-2 border-[#7F55B1] text-[#7F55B1] rounded-xl font-medium hover:bg-violet-50 transition-all mb-4 md:mb-6 text-sm md:text-base"
               >
                 회원가입
               </button>
@@ -391,7 +383,6 @@ function HomeContent() {
                 </button>
               </div>
             </>
-          )}
         </div>
       </div>
     );
@@ -400,29 +391,29 @@ function HomeContent() {
   // 팀에 가입되지 않은 경우
   if (!user?.teamName) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center">
-        <div className="bg-white rounded-3xl shadow-xl p-12 text-center max-w-md">
-          <div className="w-20 h-20 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl mx-auto mb-6 flex items-center justify-center">
-            <span className="text-white text-3xl">👥</span>
+      <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 sm:p-8 md:p-12 text-center max-w-md w-full">
+          <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl md:rounded-2xl mx-auto mb-4 md:mb-6 flex items-center justify-center">
+            <span className="text-white text-2xl md:text-3xl">👥</span>
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-3">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-2 md:mb-3">
             팀 가입이 필요합니다
           </h2>
-          <p className="text-gray-500 mb-8">
+          <p className="text-gray-500 text-sm md:text-base mb-6 md:mb-8">
             업무를 확인하고 관리하려면 먼저 팀에 가입해주세요.
           </p>
           <button
             onClick={goToTeamJoin}
-            className="w-full py-3 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white rounded-xl font-medium hover:from-[#6B479A] hover:to-purple-500 transition-all shadow-lg hover:shadow-xl mb-4"
+            className="w-full py-3 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white rounded-xl font-medium hover:from-[#6B479A] hover:to-purple-500 transition-all shadow-lg hover:shadow-xl mb-4 text-sm md:text-base"
           >
             팀 가입하기
           </button>
-          <p className="text-gray-400 text-sm mb-3">
+          <p className="text-gray-400 text-xs md:text-sm mb-3">
             팀을 새로 만들어야 한다면?
           </p>
           <button
             onClick={goToTeamCreate}
-            className="w-full py-3 bg-white border-2 border-[#7F55B1] text-[#7F55B1] rounded-xl font-medium hover:bg-violet-50 transition-all"
+            className="w-full py-3 bg-white border-2 border-[#7F55B1] text-[#7F55B1] rounded-xl font-medium hover:bg-violet-50 transition-all text-sm md:text-base"
           >
             팀 생성하기
           </button>
@@ -444,29 +435,28 @@ function HomeContent() {
       onMenuClick={handleLeftMenu}
       sidebarVariant="default"
     >
-      {/* 컨텐츠 그리드 */}
-      <div className="h-auto">
-        <div className="grid grid-cols-3 gap-4 h-full min-h-0">
+      {/* 컨텐츠 그리드: 모바일 1열, lg 이상 3열 */}
+      <div className="h-auto w-full min-w-0">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 h-full min-h-0">
           {/* 좌측 컬럼 (2/3) */}
-          <div className="col-span-2 space-y-4 h-full min-h-0 overflow-hidden">
+          <div className="lg:col-span-2 space-y-3 md:space-y-4 h-full min-h-0 overflow-hidden">
             {/* Today's Tasks 요약 카드 */}
-            <div className="bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-3xl p-6 text-white shadow-xl">
-              <div className="flex justify-between items-start">
+            <div className="bg-gradient-to-br from-[#7F55B1] to-purple-400 rounded-2xl md:rounded-3xl p-4 md:p-6 text-white shadow-xl">
+              <div className="flex justify-between items-start gap-2">
                 <div>
-                  <h2 className="text-purple-200 text-sm mb-1">
+                  <h2 className="text-purple-200 text-xs md:text-sm mb-1">
                     Today&apos;s Tasks
                   </h2>
                   <div className="flex items-end gap-2">
-                    <span className="text-5xl font-bold">{`${nowTasks.length}`}</span>
-                    <span className="text-xl mb-1">건</span>
+                    <span className="text-3xl md:text-5xl font-bold">{`${nowTasks.length}`}</span>
+                    <span className="text-base md:text-xl mb-1">건</span>
                   </div>
                 </div>
 
-                {/* 업무 전달 버튼 (팀장 이상만) */}
                 {user.role === "TEAM_LEAD" && (
                   <button
                     onClick={workAssignment}
-                    className="px-4 py-2 bg-white text-[#7F55B1] rounded-xl font-medium hover:bg-purple-50 transition-colors text-sm"
+                    className="px-3 md:px-4 py-1.5 md:py-2 bg-white text-[#7F55B1] rounded-lg md:rounded-xl font-medium hover:bg-purple-50 transition-colors text-xs md:text-sm whitespace-nowrap"
                   >
                     + 업무 만들기
                   </button>
@@ -475,13 +465,13 @@ function HomeContent() {
             </div>
 
             {/* 진행중/완료 탭 섹션 */}
-            <div className="bg-white rounded-3xl shadow-sm overflow-hidden">
+            <div className="bg-white rounded-2xl md:rounded-3xl shadow-sm overflow-hidden">
               {/* 탭 헤더 */}
               <div className="flex border-b border-gray-100">
                 {/* 1. 진행중 탭 */}
                 <button
                   onClick={() => setActiveTab("NOW")}
-                  className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
+                  className={`flex-1 py-3 md:py-4 px-3 md:px-6 text-center font-medium transition-all text-sm md:text-base ${
                     activeTab === "NOW"
                       ? "text-[#7F55B1] border-b-2 border-[#7F55B1] bg-purple-50"
                       : "text-gray-400 hover:text-gray-600"
@@ -499,7 +489,7 @@ function HomeContent() {
                 {/* 2. 리뷰중 탭 */}
                 <button
                   onClick={() => setActiveTab("REVIEW")}
-                  className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
+                  className={`flex-1 py-3 md:py-4 px-3 md:px-6 text-center font-medium transition-all text-sm md:text-base ${
                     activeTab === "REVIEW"
                       ? "text-[#7F55B1] border-b-2 border-[#7F55B1] bg-purple-50"
                       : "text-gray-400 hover:text-gray-600"
@@ -517,7 +507,7 @@ function HomeContent() {
                 {/* 3. 완료 탭 */}
                 <button
                   onClick={() => setActiveTab("COMPLETED")}
-                  className={`flex-1 py-4 px-6 text-center font-medium transition-all ${
+                  className={`flex-1 py-3 md:py-4 px-3 md:px-6 text-center font-medium transition-all text-sm md:text-base ${
                     activeTab === "COMPLETED"
                       ? "text-[#7F55B1] border-b-2 border-[#7F55B1] bg-purple-50"
                       : "text-gray-400 hover:text-gray-600"
@@ -534,8 +524,8 @@ function HomeContent() {
               </div>
 
               {/* 업무 목록 */}
-              <div className="p-6 min-h-[220px] max-h-[clamp(220px,35vh,420px)] overflow-auto">
-                <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 md:p-6 min-h-[180px] md:min-h-[220px] max-h-[clamp(180px,35vh,420px)] overflow-auto">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 mb-4">
                   <input
                     value={taskSearch}
                     onChange={(e) => setTaskSearch(e.target.value)}
@@ -652,25 +642,22 @@ function HomeContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 min-h-0">
-              <div className="col-span-2 space-y-4">
-                {/* 개발팀: GitHub 활동 위젯만 표시 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 min-h-0">
+              <div className="md:col-span-2 space-y-3 md:space-y-4">
                 {user?.teamName === "개발팀" && <GithubActivityWidget />}
-
-                {/* 디자인팀: Figma 활동 위젯만 표시 */}
                 {user?.teamName === "디자인팀" && <FigmaActivityWidget />}
               </div>
 
               <Weather />
-              <div className="col-span-1" />
-              <div className="flex w-auto"></div>
+              <div className="hidden lg:block" />
+              <div className="hidden lg:block" />
             </div>
           </div>
 
           {/* 우측 컬럼 (1/3) */}
-          <div className="space-y-4 h-full min-h-0 overflow-hidden">
+          <div className="space-y-3 md:space-y-4 h-full min-h-0 overflow-hidden">
             {/* 내 정보 카드 */}
-            <div className="bg-white rounded-3xl p-6 shadow-sm">
+            <div className="bg-white rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-semibold text-gray-800">내 정보</h3>
                 <span className="text-gray-400 text-sm">{user.teamName}</span>
@@ -686,7 +673,7 @@ function HomeContent() {
               </div>
             </div>
             {/* 업무 통계 카드 */}
-            <div className="bg-white rounded-3xl p-6 shadow-sm">
+            <div className="bg-white rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm">
               <h3 className="font-semibold text-gray-800 mb-4">업무 현황</h3>
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
@@ -767,7 +754,7 @@ function HomeContent() {
 
       {/* 성공 메시지 */}
       {showSuccessMessage && (
-        <div className="fixed top-20 right-4 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white px-6 py-3 rounded-xl shadow-lg z-50">
+        <div className="fixed top-16 md:top-20 right-2 left-2 md:left-auto md:right-4 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white px-4 md:px-6 py-2.5 md:py-3 rounded-xl shadow-lg z-50 text-sm md:text-base text-center">
           로그인이 완료되었습니다!
         </div>
       )}

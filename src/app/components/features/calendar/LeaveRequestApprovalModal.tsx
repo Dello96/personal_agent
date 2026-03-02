@@ -9,6 +9,7 @@ import {
 } from "@/lib/api/calendar";
 import { formatRelativeTime } from "@/lib/utils/dateFormat";
 import { useNotificationStore } from "@/app/stores/notificationStore";
+import Modal from "@/app/components/ui/Modal";
 
 interface LeaveRequestApprovalModalProps {
   isOpen: boolean;
@@ -105,22 +106,13 @@ const LeaveRequestApprovalModal = ({
     return type === "LEAVE" ? "연차" : "휴가";
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">
-            연차/휴가 신청 승인
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl"
-          >
-            ×
-          </button>
-        </div>
+    <Modal open={isOpen} onClose={onClose} size="lg" className="rounded-2xl p-6">
+      <div className="flex items-center justify-between mb-6 pr-8">
+        <h2 className="text-2xl font-bold text-gray-800">
+          연차/휴가 신청 승인
+        </h2>
+      </div>
 
         {loading ? (
           <div className="text-center py-8">
@@ -198,8 +190,7 @@ const LeaveRequestApprovalModal = ({
             닫기
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
 

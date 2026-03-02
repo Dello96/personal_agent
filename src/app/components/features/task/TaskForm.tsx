@@ -248,6 +248,20 @@ export default function TaskForm() {
             {/* 업무 제목 */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
+                한 문장으로 업무 생성하기!{" "}
+                <div className="text-red-500">with AI</div>
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="예: 오늘부터 4월19일까지 진행되는 긴급 프로젝트를 나와 우리팀 모두를 포함시켜서 만들어줘"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
                 업무 제목 <span className="text-red-500">*</span>
               </label>
               <input

@@ -206,9 +206,13 @@ export async function getWeatherData(
       return { ok: false, error: "기상청 API 응답 형식 오류", data: null };
     }
     const resultCode = ultraJson?.response?.header?.resultCode;
+    const resultMsg = ultraJson?.response?.header?.resultMsg ?? "기상청 API 오류";
     if (resultCode && resultCode !== "00") {
-      const msg = ultraJson?.response?.header?.resultMsg ?? "기상청 API 오류";
-      return { ok: false, error: msg, data: null };
+      // NO_DATA 인 경우에는 현재 기온(T1H)이 없을 뿐이므로,
+      // 다른 예보 데이터는 그대로 사용하고 temp만 null로 두고 계속 진행한다.
+      if (!resultMsg.includes("NO_DATA")) {
+        return { ok: false, error: resultMsg, data: null };
+      }
     }
     const ultraItem = ultraJson?.response?.body?.items?.item;
     const ultraList = Array.isArray(ultraItem)

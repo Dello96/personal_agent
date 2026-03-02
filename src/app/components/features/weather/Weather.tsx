@@ -27,11 +27,11 @@ export default function Weather() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<WeatherResult | null>(null);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
 
   const fetchLocation = () => {
     setLocationError(null);
     setLocation(undefined);
-    setResult(null);
     setLoading(true);
     navigator.geolocation.getCurrentPosition(
       (response) => {
@@ -67,13 +67,22 @@ export default function Weather() {
       setLoading(true);
       try {
         const res = await getWeatherData(location.latitude, location.longitude);
-        setResult(res);
+        if (res.ok && res.data) {
+          setResult(res);
+          setWeatherError(null);
+        } else if (res.error) {
+          const msg = res.error.includes("NO_DATA")
+            ? "현재 시각의 기상청 데이터가 아직 없습니다. 잠시 후 다시 시도해 주세요."
+            : res.error;
+          setWeatherError(msg);
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchWeather();
+
     const interval = setInterval(fetchWeather, WEATHER_REFRESH_MS);
     return () => clearInterval(interval);
   }, [location?.latitude, location?.longitude]);
@@ -87,10 +96,10 @@ export default function Weather() {
       {locationError && (
         <p className="mt-2 text-red-500 text-sm">{locationError}</p>
       )}
-      {result?.ok === false && result.error && (
-        <p className="mt-2 text-red-500 text-sm">{result.error}</p>
+      {weatherError && !loading && (
+        <p className="mt-2 text-red-500 text-sm">{weatherError}</p>
       )}
-      {result?.ok === true && result.data && (
+      {result?.data && (
         <div className="mt-3 p-3 bg-black/20 rounded-lg">
           <p className="font-medium">{result.data.name ?? "현재 위치"}</p>
 

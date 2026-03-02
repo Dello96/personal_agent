@@ -12,6 +12,10 @@ interface SidebarProps {
   activeMenu?: string;
   onMenuClick?: (menu: string) => void;
   variant?: SidebarVariant;
+  /** 모바일에서 드로어 열림 여부 */
+  isOpen?: boolean;
+  /** 모바일에서 드로어 닫기 (메뉴 클릭·닫기 버튼 시) */
+  onClose?: () => void;
 }
 
 const defaultMenus = ["진행중인 업무", "일정", "채팅"];
@@ -27,12 +31,19 @@ const getMenuIcon = (menu: string): string => {
   return "";
 };
 
+const sidebarBaseClass =
+  "w-64 bg-gradient-to-b from-[#7F55B1] to-[#9B6BC3] p-4 md:p-6 flex flex-col shadow-xl transition-transform duration-200 ease-out z-40 " +
+  "fixed md:relative inset-y-0 left-0 rounded-none md:rounded-3xl m-0 md:m-4";
+
 export default function Sidebar({
   activeMenu,
   onMenuClick,
   variant = "default",
+  isOpen = false,
+  onClose,
 }: SidebarProps) {
   const router = useRouter();
+  const translateClass = isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0";
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
   const hasNewMessage = useNotificationStore((state) => state.hasNewMessage);
@@ -85,6 +96,7 @@ export default function Sidebar({
   };
 
   const handleDefaultMenuClick = (menu: string) => {
+    onClose?.();
     if (onMenuClick) {
       onMenuClick(menu);
     } else {
@@ -104,10 +116,21 @@ export default function Sidebar({
   // 기본 사이드바 (메인 페이지, 캘린더 페이지)
   if (variant === "default") {
     return (
-      <aside className="w-64 bg-gradient-to-b from-[#7F55B1] to-[#9B6BC3] rounded-3xl m-4 p-6 flex flex-col shadow-xl">
+      <aside className={`${sidebarBaseClass} ${translateClass}`}>
+        {/* 모바일 전용 닫기 버튼 */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="메뉴 닫기"
+          className="md:hidden absolute top-4 right-4 text-white/90 hover:text-white p-1"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
         {/* 로고 영역 */}
-        <div className="mb-10">
-          <h1 className="text-white text-2xl font-bold italic flex items-center gap-2">
+        <div className="mb-6 md:mb-10">
+          <h1 className="text-white text-xl md:text-2xl font-bold italic flex items-center gap-2 pr-8 md:pr-0">
             <span className="text-3xl"></span>
             Work Together
           </h1>
@@ -166,9 +189,12 @@ export default function Sidebar({
   // 업무 상세 페이지 사이드바
   if (variant === "task-detail") {
     return (
-      <aside className="w-64 bg-gradient-to-b from-[#7F55B1] to-[#9B6BC3] rounded-3xl m-4 p-6 flex flex-col shadow-xl">
+      <aside className={`${sidebarBaseClass} ${translateClass}`}>
+        <button type="button" onClick={onClose} aria-label="메뉴 닫기" className="md:hidden absolute top-4 right-4 text-white/90 hover:text-white p-1">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
         {/* 로고 영역 */}
-        <div className="mb-10">
+        <div className="mb-6 md:mb-10 pr-8 md:pr-0">
           <h1
             onClick={() => router.push("/")}
             className="text-white text-2xl font-bold italic flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
@@ -222,9 +248,12 @@ export default function Sidebar({
   // 업무 폼 페이지 사이드바
   if (variant === "task-form") {
     return (
-      <aside className="w-64 bg-gradient-to-b from-[#7F55B1] to-[#9B6BC3] rounded-3xl m-4 p-6 flex flex-col shadow-xl">
+      <aside className={`${sidebarBaseClass} ${translateClass}`}>
+        <button type="button" onClick={onClose} aria-label="메뉴 닫기" className="md:hidden absolute top-4 right-4 text-white/90 hover:text-white p-1">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
         {/* 로고 영역 */}
-        <div className="mb-10">
+        <div className="mb-6 md:mb-10 pr-8 md:pr-0">
           <h1 className="text-white text-2xl font-bold italic flex items-center gap-2">
             <span className="text-3xl"></span>
             Work Together

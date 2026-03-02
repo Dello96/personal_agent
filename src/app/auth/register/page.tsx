@@ -202,21 +202,19 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center p-3 sm:p-4">
       <div className="w-full max-w-md">
-        {/* 로고 */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-[#7F55B1] flex items-center justify-center gap-2">
-            <span className="text-4xl">📋</span>
+        <div className="text-center mb-6 md:mb-8">
+          <h1 className="text-2xl md:text-3xl font-bold text-[#7F55B1] flex items-center justify-center gap-2">
+            <span className="text-3xl md:text-4xl">📋</span>
             TaskFlow
           </h1>
-          <p className="text-gray-600 mt-2">회원가입</p>
+          <p className="text-gray-600 mt-2 text-sm md:text-base">회원가입</p>
         </div>
 
-        {/* 회원가입 폼 */}
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-2xl shadow-xl p-8 space-y-5"
+          className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 space-y-4 md:space-y-5"
         >
           {inviteTeam && (
             <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
@@ -331,7 +329,7 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               역할 <span className="text-red-500">*</span>
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {ROLES.map((role) => (
                 <label
                   key={role.value}

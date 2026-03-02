@@ -76,13 +76,13 @@ const CustomCalendar = ({
   };
 
   return (
-    <div className="w-full">
-      <div className="box-border w-full border border-gray-400 divide-y divide-gray-400">
+    <div className="w-full min-w-0 overflow-x-auto">
+      <div className="box-border w-full min-w-[280px] border border-gray-400 divide-y divide-gray-400">
         <div className="grid grid-cols-7 divide-x divide-gray-400 bg-gray-100">
           {week.map((item) => (
-            <div key={item}>
+            <div key={item} className="min-w-0">
               <p
-                className={`h-8 leading-8 text-center text-sm ${
+                className={`h-6 md:h-8 leading-6 md:leading-8 text-center text-xs md:text-sm ${
                   item === "일"
                     ? "text-red-600"
                     : item === "토"
@@ -113,11 +113,11 @@ const CustomCalendar = ({
                 return (
                   <div
                     key={day.unix()}
-                    className="relative hover:bg-gray-50 transition-colors cursor-pointer flex flex-col h-[clamp(70px,10vh,110px)]"
+                    className="relative hover:bg-gray-50 transition-colors cursor-pointer flex flex-col h-[clamp(56px,8vh,110px)] md:h-[clamp(70px,10vh,110px)]"
                     onClick={() => onDateClick?.(day)}
                   >
                     <div
-                      className={`pl-1 py-1 text-left text-xs ${
+                      className={`pl-0.5 md:pl-1 py-0.5 md:py-1 text-left text-[10px] md:text-xs ${
                         monthCheck ? "font-normal" : "font-light"
                       } ${
                         monthCheck && column === 0

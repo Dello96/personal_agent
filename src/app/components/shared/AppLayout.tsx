@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar, { SidebarVariant } from "./Sidebar";
 import AppHeader, { AppHeaderProps } from "./AppHeader";
@@ -23,6 +23,7 @@ export default function AppLayout({
   sidebarVariant = "default",
   headerProps,
 }: AppLayoutProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const user = useAuthStore((state) => state.user);
   const token = useAuthStore((state) => state.token);
   const pathname = usePathname();
@@ -106,22 +107,46 @@ export default function AppLayout({
     };
   }, [token, user, setHasNewMessage, pathname]);
 
+  const handleMenuClick = (menu: string) => {
+    setSidebarOpen(false);
+    onMenuClick?.(menu);
+  };
+
   return (
-    <div className="bg-gradient-to-br from-violet-50 to-purple-100 flex">
-      {/* 좌측 사이드바 */}
+    <div className="bg-gradient-to-br from-violet-50 to-purple-100 flex flex-col md:flex-row min-h-screen">
+      {/* 모바일: 사이드바 열릴 때 배경 오버레이 */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label="메뉴 닫기"
+        onClick={() => setSidebarOpen(false)}
+        onKeyDown={(e) => e.key === "Escape" && setSidebarOpen(false)}
+        className={`fixed inset-0 z-30 bg-black/50 md:hidden transition-opacity ${
+          sidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      />
+
+      {/* 좌측 사이드바: 모바일에서 드로어, md 이상에서 항상 표시 */}
       <Sidebar
         activeMenu={activeMenu}
-        onMenuClick={onMenuClick}
+        onMenuClick={handleMenuClick}
         variant={sidebarVariant}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
       {/* 메인 컨텐츠 영역 */}
-      <main className="flex-1 p-4 overflow-hidden flex flex-col min-h-0">
+      <main className="flex-1 p-3 md:p-4 overflow-hidden flex flex-col min-h-0 w-full min-w-0">
         {/* 상단바 */}
-        <AppHeader {...headerProps} />
+        <AppHeader
+          {...headerProps}
+          onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+        />
 
         {/* 컨텐츠 */}
-        <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
+        <div className="flex-1 min-h-0 overflow-hidden overflow-x-auto">
+          {children}
+        </div>
       </main>
     </div>
   );

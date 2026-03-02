@@ -163,11 +163,11 @@ const CalendarEventDetailModal = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div className="space-y-1">
-            <h2 className="text-2xl font-bold text-gray-800">{event.title}</h2>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 md:p-4">
+      <div className="bg-white rounded-2xl p-4 md:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 md:mb-6">
+          <div className="space-y-1 min-w-0">
+            <h2 className="text-xl md:text-2xl font-bold text-gray-800 truncate">{event.title}</h2>
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-500">
                 {getEventTypeLabel(event.type)}
@@ -211,7 +211,7 @@ const CalendarEventDetailModal = ({
           <div className="space-y-4">
             <div>
               <p className="text-xs text-gray-500 mb-2">일정 유형</p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {(
                   ["MEETING_ROOM", "MEETING", "LEAVE", "VACATION"] as const
                 ).map((type) => (
@@ -251,7 +251,7 @@ const CalendarEventDetailModal = ({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-gray-500 mb-2">시작일</p>
                 <input
@@ -272,7 +272,7 @@ const CalendarEventDetailModal = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-gray-500 mb-2">종료일</p>
                 <input
@@ -311,7 +311,7 @@ const CalendarEventDetailModal = ({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-gray-500">신청자</p>
                 <p className="text-sm text-gray-800">
@@ -357,7 +357,7 @@ const CalendarEventDetailModal = ({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-gray-500">시작</p>
                 <p className="text-sm text-gray-800">
@@ -388,7 +388,7 @@ const CalendarEventDetailModal = ({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-gray-500">신청자</p>
                 <p className="text-sm text-gray-800">

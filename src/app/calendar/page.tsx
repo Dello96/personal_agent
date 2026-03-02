@@ -140,9 +140,9 @@ const CalendarPage = () => {
       sidebarVariant="default"
     >
       {/* 캘린더 컨텐츠 */}
-      <div className="h-full flex flex-col min-h-0">
-        <div className="bg-white rounded-3xl shadow-sm p-6 flex flex-col">
-          <div className="flex items-center justify-between w-full py-4 mb-4 shrink-0">
+      <div className="h-full flex flex-col min-h-0 w-full min-w-0">
+        <div className="bg-white rounded-2xl md:rounded-3xl shadow-sm p-3 md:p-6 flex flex-col">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between w-full py-3 md:py-4 mb-3 md:mb-4 shrink-0 gap-3">
             <div className="flex items-center justify-center">
               <button
                 className="w-6 h-6 text-gray-600 hover:text-[#7F55B1] transition-colors"
@@ -151,7 +151,7 @@ const CalendarPage = () => {
               >
                 ⬅️
               </button>
-              <p className="mx-4 mt-1 text-gray-600 font-medium text-lg">
+              <p className="mx-2 md:mx-4 mt-1 text-gray-600 font-medium text-base md:text-lg">
                 {dateToFormatString(today, "YYYY년 MM월")}
               </p>
               <button
@@ -162,35 +162,35 @@ const CalendarPage = () => {
                 ➡️
               </button>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-center gap-1.5 md:gap-2">
               <button
                 type="button"
-                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
                 onClick={() => handleOpenModal("MEETING_ROOM")}
               >
                 회의실예약
               </button>
               <button
                 type="button"
-                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
                 onClick={() => handleOpenModal("MEETING")}
               >
                 미팅예약
               </button>
               <button
                 type="button"
-                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
                 onClick={() => handleOpenModal("LEAVE")}
               >
-                연차 및 휴가 요청
+                연차·휴가
               </button>
               {isTeamLeadOrAbove(user?.role || "") && (
                 <button
                   type="button"
-                  className="px-3 py-1.5 text-sm bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors font-medium relative"
+                  className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors font-medium relative"
                   onClick={() => setIsApprovalModalOpen(true)}
                 >
-                  승인 대기
+                  승인대기
                   {hasPendingLeaveRequest && (
                     <span className="absolute -top-1 -right-1 w-5 h-5 bg-orange-500 text-white rounded-full text-xs flex items-center justify-center">
                       !
@@ -200,7 +200,7 @@ const CalendarPage = () => {
               )}
               <button
                 type="button"
-                className="px-4 py-2 bg-[#7F55B1] text-white rounded-xl hover:bg-[#6B479A] transition-colors font-medium"
+                className="px-3 md:px-4 py-1.5 md:py-2 bg-[#7F55B1] text-white rounded-lg md:rounded-xl hover:bg-[#6B479A] transition-colors font-medium text-sm md:text-base"
                 onClick={setPresentMonth}
               >
                 오늘
