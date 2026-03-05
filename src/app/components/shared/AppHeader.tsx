@@ -9,12 +9,15 @@ export interface AppHeaderProps {
   showBackButton?: boolean;
   title?: string;
   onBackClick?: () => void;
+  /** 모바일에서 사이드바 토글 (햄버거 메뉴) */
+  onToggleSidebar?: () => void;
 }
 
 export default function AppHeader({
   showBackButton = false,
   title,
   onBackClick,
+  onToggleSidebar,
 }: AppHeaderProps) {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
@@ -34,9 +37,31 @@ export default function AppHeader({
   };
 
   return (
-    <header className="bg-white rounded-2xl px-6 py-4 mb-4 shadow-sm flex items-center justify-between">
-      {/* 좌측: 뒤로가기 + Home 버튼 */}
-      <div className="flex items-center gap-4">
+    <header className="bg-white rounded-2xl px-3 md:px-6 py-3 md:py-4 mb-3 md:mb-4 shadow-sm flex items-center justify-between gap-2 flex-wrap">
+      {/* 좌측: 햄버거(모바일) + 뒤로가기 + Home 버튼 */}
+      <div className="flex items-center gap-2 md:gap-4 min-w-0">
+        {onToggleSidebar && (
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            aria-label="메뉴 열기"
+            className="md:hidden p-2 text-gray-600 hover:text-[#7F55B1] hover:bg-violet-50 rounded-lg transition-colors"
+          >
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+          </button>
+        )}
         {showBackButton && (
           <button
             onClick={handleBack}
@@ -56,39 +81,35 @@ export default function AppHeader({
             className="flex items-center gap-2 text-gray-600 hover:text-[#7F55B1] transition-colors"
           >
             <span className="text-xl">🏠</span>
-            <span className="font-medium">Home</span>
+            <span className="font-medium hidden sm:inline">HOME</span>
           </button>
         )}
       </div>
 
-      {/* 우측: 직급, 마이페이지, 로그아웃 */}
-      <div className="flex items-center gap-4">
-        {/* 직급 표시 */}
+      {/* 우측: 직급, 알림, 마이페이지, 로그아웃 */}
+      <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
         {user && (
-          <span className="px-4 py-2 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white rounded-full text-sm font-medium">
+          <span className="px-2 md:px-4 py-1.5 md:py-2 bg-gradient-to-r from-[#7F55B1] to-purple-400 text-white rounded-full text-xs md:text-sm font-medium whitespace-nowrap">
             {getRoleLabel(user.role)}
           </span>
         )}
 
-        {/* 알림 센터 */}
         <NotificationCenter />
 
-        {/* 마이페이지 */}
         <button
           onClick={() => router.push("/mypage")}
-          className="flex items-center gap-2 text-gray-600 hover:text-[#7F55B1] transition-colors"
+          className="flex items-center gap-1.5 md:gap-2 text-gray-600 hover:text-[#7F55B1] transition-colors p-1.5 md:p-0"
         >
           <span className="text-xl">👤</span>
-          <span className="font-medium">Mypage</span>
+          <span className="font-medium hidden sm:inline">Mypage</span>
         </button>
 
-        {/* 로그아웃 */}
         <button
           onClick={handleLogout}
-          className="flex items-center gap-2 px-4 py-2 bg-red-100 text-red-500 rounded-xl hover:bg-red-200 transition-colors"
+          className="flex items-center gap-1.5 md:gap-2 px-2 md:px-4 py-1.5 md:py-2 bg-red-100 text-red-500 rounded-xl hover:bg-red-200 transition-colors text-sm"
         >
           <span>🚪</span>
-          <span className="font-medium">Logout</span>
+          <span className="font-medium hidden sm:inline">Logout</span>
         </button>
       </div>
     </header>

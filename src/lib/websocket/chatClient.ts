@@ -15,7 +15,24 @@ export interface ChatWebSocketClient {
   disconnect: () => void;
   joinRoom: (roomId: string, type: ChatRoomType) => void;
   leaveRoom: (roomId: string) => void;
-  sendMessage: (content: string, roomId: string | null, type: ChatRoomType) => void;
+  sendMessage: (
+    content: string,
+    roomId: string | null,
+    type: ChatRoomType,
+    attachments?: Array<{
+      url: string;
+      type: "image" | "video";
+      name?: string;
+      size?: number;
+    }> | null,
+    links?: Array<{
+      url: string;
+      title?: string | null;
+      description?: string | null;
+      image?: string | null;
+    }> | null,
+    clientMessageId?: string | null
+  ) => void;
   onMessage: (callback: (message: any) => void) => void;
   onError: (callback: (error: Error) => void) => void;
   onConnect: (callback: () => void) => void;
@@ -82,20 +99,33 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
       this.ws.onerror = (error) => {
         console.error("❌ WebSocket 에러:", error);
         console.error("WebSocket URL:", url.replace(token, "***"));
-        this.errorCallbacks.forEach((callback) => callback(new Error("WebSocket 연결 오류")));
+        this.errorCallbacks.forEach((callback) =>
+          callback(new Error("WebSocket 연결 오류"))
+        );
       };
 
       this.ws.onclose = (event) => {
         console.log("🔌 WebSocket 연결 종료:", event.code, event.reason);
         this.disconnectCallbacks.forEach((callback) => callback());
-        
+
         // 정상 종료가 아니면 재연결 시도
-        if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-          console.log(`재연결 시도 (${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`);
+        if (
+          event.code !== 1000 &&
+          this.reconnectAttempts < this.maxReconnectAttempts
+        ) {
+          console.log(
+            `재연결 시도 (${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`
+          );
           this.scheduleReconnect();
         } else if (event.code !== 1000) {
           console.error("❌ 최대 재연결 시도 횟수 초과");
-          this.errorCallbacks.forEach((callback) => callback(new Error("WebSocket 연결에 실패했습니다. 페이지를 새로고침해주세요.")));
+          this.errorCallbacks.forEach((callback) =>
+            callback(
+              new Error(
+                "WebSocket 연결에 실패했습니다. 페이지를 새로고침해주세요."
+              )
+            )
+          );
         }
       };
     } catch (error) {
@@ -112,7 +142,9 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
     this.reconnectAttempts++;
     const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1); // 지수 백오프
 
-    console.log(`${delay}ms 후 재연결 시도 (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    console.log(
+      `${delay}ms 후 재연결 시도 (${this.reconnectAttempts}/${this.maxReconnectAttempts})`
+    );
 
     this.reconnectTimer = setTimeout(() => {
       if (this.token) {
@@ -129,13 +161,16 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
 
     if (this.ws) {
       // 연결 상태에 따라 적절히 종료
-      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+      if (
+        this.ws.readyState === WebSocket.OPEN ||
+        this.ws.readyState === WebSocket.CONNECTING
+      ) {
         this.ws.close(1000, "정상 종료");
       }
       this.ws = null;
     }
     this.token = null;
-    
+
     // 콜백은 초기화하지 않음 (재연결 시 재사용)
   }
 
@@ -163,7 +198,24 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
     });
   }
 
-  sendMessage(content: string, roomId: string | null, roomType: ChatRoomType) {
+  sendMessage(
+    content: string,
+    roomId: string | null,
+    roomType: ChatRoomType,
+    attachments?: Array<{
+      url: string;
+      type: "image" | "video";
+      name?: string;
+      size?: number;
+    }> | null,
+    links?: Array<{
+      url: string;
+      title?: string | null;
+      description?: string | null;
+      image?: string | null;
+    }> | null,
+    clientMessageId?: string | null
+  ) {
     if (!this.isConnected()) {
       console.error("WebSocket이 연결되어 있지 않습니다.");
       return;
@@ -174,6 +226,9 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
       content,
       roomId,
       roomType: roomType, // 채팅방 타입 (TEAM 또는 DIRECT)
+      attachments: attachments || null,
+      links: links || null,
+      clientMessageId: clientMessageId || null,
     });
   }
 
@@ -207,4 +262,5 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
 }
 
 // 싱글톤 인스턴스 생성
-export const chatWebSocketClient: ChatWebSocketClient = new ChatWebSocketClientImpl();
+export const chatWebSocketClient: ChatWebSocketClient =
+  new ChatWebSocketClientImpl();

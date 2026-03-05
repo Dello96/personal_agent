@@ -12,7 +12,7 @@ model User {
   email     String   @unique
   name      String
   picture   String?
-  role      Role     @default(MEMBER)
+  role      Role     @default(INTERN)
   teamName  String?
   team      Team?    @relation("TeamMembers", fields: [teamName], references: [teamName])
   createdAt DateTime @default(now())
@@ -26,6 +26,8 @@ model User {
   messages                Message[]         @relation("MessageSender")
   chatRoomParticipants    ChatRoomParticipant[] @relation("ChatRoomParticipant")
   notifications           Notification[]
+  meetingNotes            MeetingNote[]
+  taskDiscussionNotes     TaskDiscussionNote[]
 }
 
 model Team {
@@ -66,6 +68,7 @@ model Task {
   referenceImageUrls String[]            @default([])
   referenceLinks     String[]            @default([]) // 참고 링크 (GitHub, YouTube, 기타)
   githubRepository   TaskGitHubRepository?
+  discussionNotes    TaskDiscussionNote[]
 }
 
 model TaskParticipant {
@@ -101,11 +104,28 @@ model TaskStatusHistory {
   task Task @relation(fields: [taskId], references: [id])
 }
 
+model TaskDiscussionNote {
+  id        String   @id @default(uuid())
+  taskId    String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, authorId])
+  @@index([taskId, updatedAt])
+  @@index([authorId, updatedAt])
+}
+
 enum Role {
-  MEMBER
+  INTERN
+  STAFF
+  ASSOCIATE
+  ASSISTANT_MANAGER
   TEAM_LEAD
-  MANAGER
-  DIRECTOR
 }
 
 enum TaskStatus {
@@ -156,6 +176,7 @@ model CalendarEvent {
   requester User  @relation("CalendarEventRequester", fields: [requestedBy], references: [id])
   approver  User? @relation("CalendarEventApprover", fields: [approvedBy], references: [id])
   team      Team  @relation(fields: [teamId], references: [teamName])
+  meetingNotes MeetingNote[]
 
   @@index([startDate, endDate])
   @@index([teamId])
@@ -200,6 +221,8 @@ model Message {
   chatRoomId String
   senderId   String
   content    String
+  attachments Json?
+  links       Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -299,8 +322,25 @@ model FigmaTeamConnection {
 
   team     Team          @relation(fields: [teamId], references: [teamName], onDelete: Cascade)
   activities FigmaActivity[]
+  subscriptions FigmaWebhookSubscription[]
 
   @@index([teamId])
+}
+
+model FigmaWebhookSubscription {
+  id             String   @id @default(uuid())
+  connectionId   String
+  figmaWebhookId Int      @unique
+  passcode       String
+  eventType      String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  connection FigmaTeamConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId])
+  @@index([eventType])
 }
 
 model FigmaActivity {
@@ -336,4 +376,20 @@ model Notification {
   @@index([userId, createdAt])
   @@index([userId, isRead, createdAt])
   @@index([userId, chatRoomId, isRead, createdAt])
+}
+
+model MeetingNote {
+  id        String   @id @default(uuid())
+  eventId   String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event  CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  author User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, authorId])
+  @@index([authorId, updatedAt])
+  @@index([eventId, updatedAt])
 }

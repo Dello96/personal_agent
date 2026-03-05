@@ -1,20 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { register, checkEmail } from "@/lib/api/auth";
 import { useAuthStore } from "@/app/stores/authStore";
+import { joinTeam } from "@/lib/api/team";
+import { getCurrentUser } from "@/lib/api/users";
+
+const PENDING_TEAM_KEY = "pendingInviteTeam";
 
 const ROLES = [
-  { value: "MEMBER", label: "팀원", description: "일반 팀원으로 참여합니다" },
+  { value: "INTERN", label: "인턴", description: "프로젝트에 참여합니다" },
+  { value: "STAFF", label: "사원", description: "프로젝트에 참여합니다" },
+  { value: "ASSOCIATE", label: "주임", description: "프로젝트에 참여합니다" },
+  {
+    value: "ASSISTANT_MANAGER",
+    label: "대리",
+    description: "프로젝트에 참여합니다",
+  },
   {
     value: "TEAM_LEAD",
     label: "팀장",
     description: "팀을 관리하고 업무를 배정합니다",
   },
-  { value: "MANAGER", label: "매니저", description: "여러 팀을 총괄합니다" },
-  { value: "DIRECTOR", label: "임원", description: "전체 조직을 관리합니다" },
 ] as const;
 
 export default function RegisterPage() {
@@ -24,11 +33,25 @@ export default function RegisterPage() {
     email: "",
     password: "",
     passwordConfirm: "",
-    role: "MEMBER" as "MEMBER" | "TEAM_LEAD" | "MANAGER" | "DIRECTOR",
+    role: "INTERN" as
+      | "INTERN"
+      | "STAFF"
+      | "ASSOCIATE"
+      | "ASSISTANT_MANAGER"
+      | "TEAM_LEAD",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [emailChecked, setEmailChecked] = useState(false);
+  const [inviteTeam, setInviteTeam] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const pendingTeam = localStorage.getItem(PENDING_TEAM_KEY);
+    if (pendingTeam) {
+      setInviteTeam(pendingTeam);
+    }
+  }, []);
 
   // 입력값 변경 핸들러
   const handleChange = (
@@ -132,14 +155,38 @@ export default function RegisterPage() {
           name: result.user.name,
           picture: result.user.picture ?? null,
           role: result.user.role as
-            | "MEMBER"
-            | "TEAM_LEAD"
-            | "MANAGER"
-            | "DIRECTOR",
+            | "INTERN"
+            | "STAFF"
+            | "ASSOCIATE"
+            | "ASSISTANT_MANAGER"
+            | "TEAM_LEAD",
           teamName: result.user.teamName ?? null,
         },
         result.token
       );
+
+      if (inviteTeam) {
+        try {
+          await joinTeam(inviteTeam);
+          const updatedUser = await getCurrentUser();
+          if (updatedUser) {
+            useAuthStore.getState().setUser({
+              ...updatedUser,
+              role: updatedUser.role as
+                | "INTERN"
+                | "STAFF"
+                | "ASSOCIATE"
+                | "ASSISTANT_MANAGER"
+                | "TEAM_LEAD",
+            });
+          }
+          if (typeof window !== "undefined") {
+            localStorage.removeItem(PENDING_TEAM_KEY);
+          }
+        } catch (joinError) {
+          throw new Error("초대된 팀 가입에 실패했습니다. 다시 시도해주세요.");
+        }
+      }
 
       // 메인 페이지로 이동
       router.push("/");
@@ -155,22 +202,28 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center p-3 sm:p-4">
       <div className="w-full max-w-md">
-        {/* 로고 */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-[#7F55B1] flex items-center justify-center gap-2">
-            <span className="text-4xl">📋</span>
+        <div className="text-center mb-6 md:mb-8">
+          <h1 className="text-2xl md:text-3xl font-bold text-[#7F55B1] flex items-center justify-center gap-2">
+            <span className="text-3xl md:text-4xl">📋</span>
             TaskFlow
           </h1>
-          <p className="text-gray-600 mt-2">회원가입</p>
+          <p className="text-gray-600 mt-2 text-sm md:text-base">회원가입</p>
         </div>
 
-        {/* 회원가입 폼 */}
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-2xl shadow-xl p-8 space-y-5"
+          className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 space-y-4 md:space-y-5"
         >
+          {inviteTeam && (
+            <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
+              초대된 팀: <span className="font-semibold">{inviteTeam}</span>
+              <span className="block text-xs text-violet-600 mt-1">
+                회원가입 완료 후 자동으로 팀에 가입됩니다.
+              </span>
+            </div>
+          )}
           {/* 이름 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -276,7 +329,7 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               역할 <span className="text-red-500">*</span>
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {ROLES.map((role) => (
                 <label
                   key={role.value}

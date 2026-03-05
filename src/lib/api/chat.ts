@@ -13,6 +13,19 @@ export interface Message {
   chatRoomId: string;
   senderId: string;
   content: string;
+  clientMessageId?: string;
+  attachments?: Array<{
+    url: string;
+    type: "image" | "video";
+    name?: string;
+    size?: number;
+  }> | null;
+  links?: Array<{
+    url: string;
+    title?: string | null;
+    description?: string | null;
+    image?: string | null;
+  }> | null;
   createdAt: string;
   updatedAt: string;
   sender?: {
@@ -27,6 +40,12 @@ export interface MessagesResponse {
   messages: Message[];
   hasMore: boolean;
   nextCursor: string | null;
+}
+
+export interface ChatSummaryResult {
+  discussion: string;
+  decisions: string;
+  actionItems: string;
 }
 
 // 채팅방 조회 또는 생성
@@ -72,9 +91,59 @@ export const sendMessage = async (
   });
 };
 
+export const uploadChatFiles = async (files: File[]) => {
+  const token =
+    typeof window === "undefined"
+      ? null
+      : require("@/app/stores/authStore").useAuthStore.getState().token;
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}/api/upload/chat`,
+    {
+      method: "POST",
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: formData,
+    }
+  );
+
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || "파일 업로드에 실패했습니다.");
+  }
+  return result as {
+    files: Array<{
+      url: string;
+      type: "image" | "video";
+      name?: string;
+      size?: number;
+    }>;
+  };
+};
+
 // 메시지 삭제
 export const deleteMessage = async (messageId: string): Promise<void> => {
   return apiRequest(`/api/chat/messages/${messageId}`, {
     method: "DELETE",
+  });
+};
+
+// 채팅 요약
+export const summarizeChat = async (data: {
+  roomId?: string;
+  type?: "TEAM" | "DIRECT";
+  limit?: number;
+}): Promise<{
+  ok: boolean;
+  summary: ChatSummaryResult;
+  messageCount: number;
+  model?: string;
+}> => {
+  return apiRequest("/api/chat/summarize", {
+    method: "POST",
+    body: JSON.stringify(data),
   });
 };

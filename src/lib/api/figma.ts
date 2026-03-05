@@ -18,6 +18,15 @@ export interface FigmaConnection {
   context: string;
   contextId: string;
   eventType: string;
+  eventTypes?: string[];
+  subscriptions?: Array<{
+    id: string;
+    figmaWebhookId: number;
+    eventType: string;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
   description: string | null;
   isActive: boolean;
   createdAt: string;
@@ -35,7 +44,7 @@ export const connectFigma = async (params: {
   accessToken: string;
   context: "team" | "project" | "file";
   contextId: string;
-  eventType: string;
+  eventTypes: string[];
 }): Promise<FigmaConnection> => {
   return apiRequest("/api/figma/connection", {
     method: "POST",

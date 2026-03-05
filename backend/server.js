@@ -18,7 +18,8 @@ const app = express();
 const googleClientId =
   "613918756468-a4q4drq2bblikpv1v4j63nh4g101bc5s.apps.googleusercontent.com";
 const googlePassWord = process.env.GOOGLE_CLIENT_SECRET;
-const kakaoClientId = process.env.KAKAO_CLIENT_ID;
+const kakaoClientId =
+  process.env.KAKAO_CLIENT_ID || process.env.KAKAO_REST_API_KEY;
 const kakaoSecret = process.env.KAKAO_CLIENT_SECRET;
 
 // 백엔드 URL (환경 변수에서 가져오거나 기본값 사용)
@@ -49,6 +50,9 @@ const authRoutes = require("./routes/auth");
 const githubRoutes = require("./routes/github");
 const figmaRoutes = require("./routes/figma");
 const notificationRoutes = require("./routes/notifications");
+const linksRoutes = require("./routes/links");
+const aiRoutes = require("./routes/ai");
+const meetingNotesRoutes = require("./routes/meetingNotes");
 
 app.use("/api/tasks", tasksRoutes);
 app.use("/api/team", teamRoutes);
@@ -57,6 +61,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/github", githubRoutes);
 app.use("/api/figma", figmaRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/links", linksRoutes);
+app.use("/api/ai", aiRoutes);
+app.use("/api/meeting-notes", meetingNotesRoutes);
 
 const uploadRoutes = require("./routes/upload");
 app.use("/api/upload", uploadRoutes);
@@ -69,6 +76,7 @@ app.use("/api/chat", chatRoutes);
 
 // Prisma 클라이언트 import
 const prisma = require("./db/prisma");
+const { startMeetingReminderJob } = require("./jobs/meetingReminder");
 
 app.get("/login", (req, res) => {
   let url = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -80,6 +88,11 @@ app.get("/login", (req, res) => {
 });
 
 app.get("/auth/kakao", (req, res) => {
+  if (!kakaoClientId) {
+    return res
+      .status(500)
+      .send("Kakao client_id가 설정되지 않았습니다. 환경변수를 확인해주세요.");
+  }
   const KAKAO_REDIRECT_URI = `${BACKEND_URL}/auth/kakao/callback`;
 
   let url = "https://kauth.kakao.com/oauth/authorize";
@@ -154,7 +167,7 @@ app.get("/login/redirect", async (req, res) => {
           email: googleUser.email,
           name: googleUser.name,
           picture: googleUser.picture,
-          role: "MEMBER", // 기본값
+          role: "INTERN", // 기본값
           teamName: null, // 처음에는 팀 없음
         },
       });
@@ -269,7 +282,7 @@ app.get("/auth/kakao/callback", async (req, res) => {
           email: email,
           name: name || "Kakao User",
           picture: picture,
-          role: "MEMBER",
+          role: "INTERN",
           teamName: null,
         },
       });
@@ -314,6 +327,9 @@ const chatWSS = new ChatWebSocketServer(server);
 
 // 다른 모듈에서 WebSocket 서버 인스턴스에 접근할 수 있도록 export
 module.exports.chatWSS = chatWSS;
+
+// 회의 시작 10분 전 리마인드 알림 작업
+startMeetingReminderJob(prisma, chatWSS);
 
 server.listen(8080, () => {
   console.log("server is running at 8080");

@@ -33,8 +33,14 @@ router.post("/register", async (req, res) => {
     }
 
     // 4. 역할 검증
-    const validRoles = ["MEMBER", "TEAM_LEAD", "MANAGER", "DIRECTOR"];
-    const userRole = role && validRoles.includes(role) ? role : "MEMBER";
+    const validRoles = [
+      "INTERN",
+      "STAFF",
+      "ASSOCIATE",
+      "ASSISTANT_MANAGER",
+      "TEAM_LEAD",
+    ];
+    const userRole = role && validRoles.includes(role) ? role : "INTERN";
 
     // 5. 이메일 중복 확인
     const existingUser = await prisma.user.findUnique({

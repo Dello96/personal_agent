@@ -3,6 +3,7 @@
 import { useAuthStore } from "@/app/stores/authStore";
 import { createTeam } from "@/lib/api/team";
 import { getCurrentUser } from "@/lib/api/users";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -42,10 +43,11 @@ export default function TeamCreate() {
           {
             ...updatedUser,
             role: updatedUser.role as
-              | "MEMBER"
-              | "TEAM_LEAD"
-              | "MANAGER"
-              | "DIRECTOR",
+              | "INTERN"
+              | "STAFF"
+              | "ASSOCIATE"
+              | "ASSISTANT_MANAGER"
+              | "TEAM_LEAD",
           },
           token
         );
@@ -70,13 +72,21 @@ export default function TeamCreate() {
     }
   };
   return (
-    <div className="flex flex-col items-center">
-      <form onSubmit={handleSubmit} className="w-full max-w-md">
-        <div className="flex flex-col gap-4 m-7">
-          <h2 className="text-2xl font-bold text-center mb-4">팀 생성</h2>
+    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 sm:p-8 md:p-10 max-w-md w-full">
+        <div className="mb-6 text-center">
+          <p className="text-xs font-medium text-violet-700/80">TEAM</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-gray-900">
+            팀 생성
+          </h1>
+          <p className="mt-2 text-sm text-gray-600">
+            팀 이름을 정하고 워크스페이스를 시작하세요.
+          </p>
+        </div>
 
-          <div className="flex flex-col gap-2">
-            <label htmlFor="teamName" className="text-sm font-medium">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="teamName" className="text-sm font-medium text-gray-900">
               팀 이름
             </label>
             <input
@@ -84,24 +94,45 @@ export default function TeamCreate() {
               type="text"
               value={teamName}
               onChange={(e) => setTeamName(e.target.value)}
-              placeholder="팀 이름을 입력해주세요"
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="예) 프론트엔드팀"
+              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
               maxLength={50}
               disabled={loading}
             />
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-            <p className="text-gray-500 text-xs">{teamName.length}/50자</p>
+            <div className="flex items-center justify-between">
+              {error ? (
+                <p className="text-sm text-red-600">{error}</p>
+              ) : (
+                <span className="text-sm text-gray-500">
+                  팀 이름은 1~50자 이내로 입력해 주세요.
+                </span>
+              )}
+              <span className="text-xs text-gray-400">{teamName.length}/50</span>
+            </div>
           </div>
 
           <button
             type="submit"
             disabled={loading || !teamName.trim()}
-            className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            className={[
+              "w-full rounded-xl px-4 py-3 text-sm font-semibold transition",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2",
+              loading || !teamName.trim()
+                ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                : "bg-violet-600 text-white hover:bg-violet-700",
+            ].join(" ")}
           >
             {loading ? "생성 중..." : "팀 생성하기"}
           </button>
-        </div>
-      </form>
+
+          <Link
+            href="/"
+            className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
+          >
+            홈으로 돌아가기
+          </Link>
+        </form>
+      </div>
     </div>
   );
 }

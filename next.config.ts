@@ -33,7 +33,13 @@ const nextConfig: NextConfig = {
         hostname: "*.kakaocdn.net",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "personal-agent-bucket.s3.us-east-2.amazonaws.com",
+        pathname: "/**",
+      },
     ],
+    domains: ["openweathermap.org"],
   },
 };
 

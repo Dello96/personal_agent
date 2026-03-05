@@ -3,7 +3,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createTask } from "@/lib/api/tasks";
+import {
+  createTask,
+  parseTaskFromNaturalLanguage,
+  type AiParsedTaskResult,
+} from "@/lib/api/tasks";
 import { TeamMember } from "@/lib/api/users";
 import { getCurrentTeamMembers } from "@/lib/api/team";
 import { useRouter } from "next/navigation";
@@ -16,6 +20,7 @@ export default function TaskForm() {
   const user = useAuthStore((state) => state.user);
 
   const [title, setTitle] = useState("");
+  const [naturalLanguageInput, setNaturalLanguageInput] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -34,6 +39,8 @@ export default function TaskForm() {
   const [uploadingImages, setUploadingImages] = useState(false);
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [isAiParsing, setIsAiParsing] = useState(false);
+  const [aiWarnings, setAiWarnings] = useState<string[]>([]);
 
   // 개발팀 업무 및 GitHub 레포지토리 관련 상태
   const [isDevelopmentTask, setIsDevelopmentTask] = useState(false);
@@ -46,6 +53,37 @@ export default function TaskForm() {
     MEDIUM: { label: "보통", color: "bg-blue-400" },
     HIGH: { label: "높음", color: "bg-orange-400" },
     URGENT: { label: "긴급", color: "bg-red-500" },
+  };
+
+  const normalizeAiDateToInput = (aiDate: string | null): string => {
+    if (!aiDate) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(aiDate)) return aiDate;
+    const parsed = new Date(aiDate);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return parsed.toISOString().slice(0, 10);
+  };
+
+  const resolveAssigneeIdFromAi = (
+    parsedTask: AiParsedTaskResult,
+    members: TeamMember[]
+  ): string | null => {
+    const byEmail = parsedTask.assigneeEmail
+      ? members.find(
+          (member) =>
+            member.email?.toLowerCase() === parsedTask.assigneeEmail?.toLowerCase()
+        )
+      : undefined;
+    if (byEmail) return byEmail.id;
+
+    const byName = parsedTask.assigneeName
+      ? members.find(
+          (member) =>
+            member.name?.toLowerCase() === parsedTask.assigneeName?.toLowerCase()
+        )
+      : undefined;
+    if (byName) return byName.id;
+
+    return null;
   };
 
   // 파일 선택 핸들러
@@ -231,6 +269,53 @@ export default function TaskForm() {
     }
   };
 
+  const handleParseNaturalLanguage = async () => {
+    const input = naturalLanguageInput.trim();
+    if (!input) {
+      alert("자연어 업무 요청을 입력해주세요.");
+      return;
+    }
+
+    try {
+      setIsAiParsing(true);
+      setAiWarnings([]);
+
+      const response = await parseTaskFromNaturalLanguage({
+        text: input,
+        teamMembers: teamMembers.map((member) => ({
+          name: member.name,
+          email: member.email,
+        })),
+      });
+
+      const parsedTask = response?.parsedTask;
+      if (!parsedTask) {
+        alert("AI 파싱 결과를 가져오지 못했습니다.");
+        return;
+      }
+
+      if (parsedTask.title?.trim()) setTitle(parsedTask.title.trim());
+      if (parsedTask.description?.trim()) setDescription(parsedTask.description.trim());
+      if (parsedTask.priority) setPriority(parsedTask.priority);
+
+      const normalizedDate = normalizeAiDateToInput(parsedTask.dueDate);
+      if (normalizedDate) setDueDate(normalizedDate);
+
+      const resolvedAssigneeId = resolveAssigneeIdFromAi(parsedTask, teamMembers);
+      if (resolvedAssigneeId) setAssigneeId(resolvedAssigneeId);
+
+      const warnings = Array.isArray(parsedTask.warnings)
+        ? parsedTask.warnings.filter(Boolean)
+        : [];
+      setAiWarnings(warnings);
+    } catch (error) {
+      console.error("자연어 업무 파싱 실패:", error);
+      alert("AI 파싱에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setIsAiParsing(false);
+    }
+  };
+
   const selectedMember = teamMembers.find((m) => m.id === assigneeId);
 
   return (
@@ -246,6 +331,36 @@ export default function TaskForm() {
         <div className="col-span-2 bg-white rounded-3xl p-8 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* 업무 제목 */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                한 문장으로 업무 생성하기!{" "}
+                <div className="text-red-500">with AI</div>
+              </label>
+              <div className="space-y-3">
+                <textarea
+                  value={naturalLanguageInput}
+                  onChange={(e) => setNaturalLanguageInput(e.target.value)}
+                  placeholder="예: 오늘부터 4월 19일까지 진행되는 긴급 프로젝트를 생성하고 담당자는 김민수, 우선순위는 높음으로 설정해줘"
+                  rows={3}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7F55B1] focus:border-transparent transition-all resize-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleParseNaturalLanguage}
+                  disabled={isAiParsing}
+                  className="w-full py-3 bg-violet-100 text-[#7F55B1] rounded-xl font-semibold hover:bg-violet-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isAiParsing ? "AI 파싱 중..." : "AI로 필드 자동 채우기"}
+                </button>
+                {aiWarnings.length > 0 && (
+                  <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-700">
+                    {aiWarnings.map((warning, idx) => (
+                      <p key={`${warning}-${idx}`}>- {warning}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 업무 제목 <span className="text-red-500">*</span>

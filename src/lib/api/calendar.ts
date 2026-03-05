@@ -84,6 +84,24 @@ export const deleteCalendarEvent = async (eventId: string): Promise<void> => {
   });
 };
 
+// 일정 수정
+export const updateCalendarEvent = async (
+  eventId: string,
+  data: {
+    type: "MEETING_ROOM" | "MEETING" | "LEAVE" | "VACATION";
+    title: string;
+    description?: string;
+    startDate: string;
+    endDate: string;
+    location?: string;
+  }
+): Promise<CalendarEvent> => {
+  return apiRequest(`/api/calendar/events/${eventId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
 // 단일 일정 조회
 export const getCalendarEvent = async (
   eventId: string

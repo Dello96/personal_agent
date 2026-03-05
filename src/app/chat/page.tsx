@@ -10,6 +10,9 @@ import {
   deleteMessage,
   getDirectChatRoom,
   getChatRoom,
+  uploadChatFiles,
+  summarizeChat,
+  type ChatSummaryResult,
 } from "@/lib/api/chat";
 import { formatRelativeTime } from "@/lib/utils/dateFormat";
 import Image from "next/image";
@@ -21,6 +24,7 @@ import {
   markChatRoomNotificationsRead,
   getChatUnreadCounts,
 } from "@/lib/api/notifications";
+import { getLinkPreview } from "@/lib/api/links";
 
 const ChatPage = () => {
   const router = useRouter();
@@ -29,12 +33,34 @@ const ChatPage = () => {
   const token = useAuthStore((state) => state.token);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [uploadedAttachments, setUploadedAttachments] = useState<
+    Array<{
+      url: string;
+      type: "image" | "video";
+      name?: string;
+      size?: number;
+    }>
+  >([]);
+  const [attachedPreviews, setAttachedPreviews] = useState<
+    Array<{ url: string; type: "image" | "video"; name: string }>
+  >([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [imageModal, setImageModal] = useState<{
+    url: string;
+    name?: string;
+  } | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summaryModal, setSummaryModal] = useState<{
+    summary: ChatSummaryResult;
+    messageCount: number;
+  } | null>(null);
   const [chatType, setChatType] = useState<"TEAM" | "DIRECT">("TEAM");
   const [currentChatRoomId, setCurrentChatRoomId] = useState<string | null>(
     null
@@ -85,6 +111,10 @@ const ChatPage = () => {
       router.push("/calendar");
     } else if (menu === "채팅") {
       router.push("/chat");
+    } else if (menu === "회의록") {
+      router.push("/meeting-notes");
+    } else if (menu === "팀 관리") {
+      router.push("/manager/team");
     }
   };
 
@@ -140,10 +170,44 @@ const ChatPage = () => {
   // 메시지 전송 (WebSocket 사용)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || isSending || !isConnected) return;
-
     const messageContent = newMessage.trim();
+    if (
+      (!messageContent && attachedFiles.length === 0) ||
+      isSending ||
+      !isConnected
+    )
+      return;
+
     const tempId = `temp-${Date.now()}-${Math.random()}`;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urls = messageContent.match(urlRegex) || [];
+
+    let attachmentsPayload = uploadedAttachments;
+    if (attachedFiles.length > 0 && uploadedAttachments.length === 0) {
+      try {
+        setIsUploading(true);
+        const uploadResult = await uploadChatFiles(attachedFiles);
+        attachmentsPayload = uploadResult.files;
+        setUploadedAttachments(uploadResult.files);
+      } catch (error: any) {
+        console.error("첨부파일 업로드 실패:", error);
+        alert(error.message || "첨부파일 업로드에 실패했습니다.");
+        setIsUploading(false);
+        return;
+      } finally {
+        setIsUploading(false);
+      }
+    }
+
+    const linkPreviews = [];
+    for (const url of urls.slice(0, 3)) {
+      try {
+        const preview = await getLinkPreview(url);
+        linkPreviews.push(preview);
+      } catch (previewError) {
+        linkPreviews.push({ url });
+      }
+    }
 
     // 낙관적 업데이트: 전송한 메시지를 즉시 화면에 표시
     const tempMessage: Message = {
@@ -151,6 +215,9 @@ const ChatPage = () => {
       chatRoomId: currentChatRoomId || "",
       senderId: user?.id || "",
       content: messageContent,
+      clientMessageId: tempId,
+      attachments: attachmentsPayload.length > 0 ? attachmentsPayload : null,
+      links: linkPreviews.length > 0 ? linkPreviews : null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       sender: {
@@ -176,10 +243,15 @@ const ChatPage = () => {
       wsClientRef.current.sendMessage(
         messageContent,
         currentChatRoomId,
-        chatType
+        chatType,
+        attachmentsPayload.length > 0 ? attachmentsPayload : null,
+        linkPreviews.length > 0 ? linkPreviews : null,
+        tempId
       );
 
       // 전송 성공 (서버에서 브로드캐스트된 메시지가 오면 임시 메시지가 자동으로 교체됨)
+      setAttachedFiles([]);
+      setUploadedAttachments([]);
     } catch (error: any) {
       console.error("메시지 전송 실패:", error);
       const errorMessage = error.message || "메시지 전송에 실패했습니다.";
@@ -209,6 +281,117 @@ const ChatPage = () => {
     }
   };
 
+  const handleFileChange = (files: FileList | null) => {
+    if (!files) return;
+    const nextFiles = Array.from(files);
+    setAttachedFiles((prev) => [...prev, ...nextFiles].slice(0, 5));
+    setUploadedAttachments([]);
+  };
+
+  useEffect(() => {
+    const previews = attachedFiles.map((file) => {
+      const type: "image" | "video" = file.type.startsWith("video/")
+        ? "video"
+        : "image";
+      return {
+        url: URL.createObjectURL(file),
+        type,
+        name: file.name,
+      };
+    });
+    setAttachedPreviews(previews);
+
+    return () => {
+      previews.forEach((preview) => URL.revokeObjectURL(preview.url));
+    };
+  }, [attachedFiles]);
+
+  const removeFile = (index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const renderMessageContent = (content: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = content.split(urlRegex);
+    return parts.map((part, idx) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a
+            key={`${part}-${idx}`}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline break-all"
+          >
+            {part}
+          </a>
+        );
+      }
+      return <span key={`${part}-${idx}`}>{part}</span>;
+    });
+  };
+
+  const normalizeFilename = (name?: string) => {
+    if (!name || typeof name !== "string") return "";
+    try {
+      const bytes = Uint8Array.from(name, (char) => char.charCodeAt(0));
+      const decoded = new TextDecoder("utf-8").decode(bytes);
+      if (decoded && decoded !== name) {
+        return decoded;
+      }
+    } catch (error) {
+      // ignore
+    }
+    return name;
+  };
+
+  const getSafeFilename = (name?: string) => {
+    const fallback = "attachment";
+    const normalized = normalizeFilename(name) || fallback;
+    const trimmed = normalized.trim();
+    if (!trimmed) return `${fallback}.jpg`;
+    // Windows/URL 금지 문자 제거
+    const sanitized = trimmed.replace(/[\\/:*?"<>|]/g, "_");
+    return sanitized;
+  };
+
+  const handleDownloadImage = async (url: string, name?: string) => {
+    try {
+      if (!token) {
+        throw new Error("인증 정보가 없습니다.");
+      }
+      const params = new URLSearchParams({
+        url,
+        name: getSafeFilename(name),
+      });
+      const apiBase =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+      const response = await fetch(
+        `${apiBase}/api/upload/download?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error("파일을 불러오는데 실패했습니다.");
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = getSafeFilename(name);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error("다운로드 실패:", error);
+      alert("다운로드에 실패했습니다.");
+    }
+  };
+
   // 스크롤을 맨 아래로
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -218,6 +401,38 @@ const ChatPage = () => {
   const handleLoadMore = () => {
     if (hasMore && !isLoading) {
       fetchMessages(true);
+    }
+  };
+
+  const handleSummarizeChat = async () => {
+    if (!currentChatRoomId) {
+      alert("요약할 채팅방이 없습니다.");
+      return;
+    }
+
+    try {
+      setIsSummarizing(true);
+      const result = await summarizeChat({
+        roomId: currentChatRoomId,
+        type: chatType,
+        limit: 80,
+      });
+      const safeSummary: ChatSummaryResult = {
+        discussion:
+          result?.summary?.discussion?.trim() || "요약 결과를 생성하지 못했습니다.",
+        decisions: result?.summary?.decisions?.trim() || "결정 사항 없음",
+        actionItems: result?.summary?.actionItems?.trim() || "후속 액션 없음",
+      };
+
+      setSummaryModal({
+        summary: safeSummary,
+        messageCount: result?.messageCount ?? 0,
+      });
+    } catch (summaryError: any) {
+      console.error("채팅 요약 실패:", summaryError);
+      alert(summaryError?.message || "채팅 요약에 실패했습니다.");
+    } finally {
+      setIsSummarizing(false);
     }
   };
 
@@ -231,7 +446,9 @@ const ChatPage = () => {
           id: user.id,
           name: user.name,
           email: user.email,
+          picture: user.picture ?? null,
           role: user.role,
+          createdAt: user.createdAt ?? new Date().toISOString(),
         };
         // 본인이 이미 목록에 있으면 제거하고 맨 앞에 추가
         const otherMembers = members.filter(
@@ -275,6 +492,58 @@ const ChatPage = () => {
     prefetchDirectRooms();
   }, [user, teamMembers]);
 
+  const openTeamChat = async () => {
+    if (!isConnected) {
+      alert("WebSocket 연결이 필요합니다. 잠시만 기다려주세요.");
+      return;
+    }
+
+    if (currentChatRoomId) {
+      wsClientRef.current.leaveRoom(currentChatRoomId);
+    }
+
+    setChatType("TEAM");
+    setSelectedUserId(null);
+    setSelectedUserName(null);
+    setCurrentChatRoomId(null);
+    setMessages([]);
+
+    try {
+      const teamRoom = await getChatRoom();
+      setTeamChatRoomId(teamRoom.id);
+      setCurrentChatRoomId(teamRoom.id);
+      await fetchMessages(false, teamRoom.id, "TEAM");
+      wsClientRef.current.joinRoom("", "TEAM");
+    } catch (error) {
+      console.error("팀 채팅방 로드 실패:", error);
+    }
+  };
+
+  const openSelfChat = async () => {
+    if (!isConnected || !user) {
+      alert("WebSocket 연결이 필요합니다. 잠시만 기다려주세요.");
+      return;
+    }
+
+    if (currentChatRoomId) {
+      wsClientRef.current.leaveRoom(currentChatRoomId);
+    }
+
+    try {
+      const room = await getDirectChatRoom(user.id);
+      setChatType("DIRECT");
+      setSelectedUserId(user.id);
+      setSelectedUserName("내게 쓰기");
+      setCurrentChatRoomId(room.id);
+      setMessages([]);
+      await fetchMessages(false, room.id, "DIRECT");
+      wsClientRef.current.joinRoom(room.id, "DIRECT");
+    } catch (error: any) {
+      console.error("내게 쓰기 채팅방 생성 실패:", error);
+      alert(error.message || "내게 쓰기 채팅방을 생성하는데 실패했습니다.");
+    }
+  };
+
   // 참여자 클릭 핸들러
   const handleMemberClick = async (memberId: string, memberName: string) => {
     if (!isConnected) {
@@ -282,58 +551,22 @@ const ChatPage = () => {
       return;
     }
 
-    if (memberId === user?.id) {
-      // 본인 클릭 시 팀 채팅으로
-      // 기존 채팅방에서 나가기
-      if (currentChatRoomId) {
-        wsClientRef.current.leaveRoom(currentChatRoomId);
-      }
+    if (currentChatRoomId) {
+      wsClientRef.current.leaveRoom(currentChatRoomId);
+    }
 
-      // 상태 변경
-      setChatType("TEAM");
-      setSelectedUserId(null);
-      setSelectedUserName(null);
-      setCurrentChatRoomId(null);
-
-      // 메시지 초기화 및 팀 채팅방 로드
+    try {
+      const room = await getDirectChatRoom(memberId);
+      setChatType("DIRECT");
+      setSelectedUserId(memberId);
+      setSelectedUserName(memberName);
+      setCurrentChatRoomId(room.id);
       setMessages([]);
-      try {
-        const teamRoom = await getChatRoom();
-        setTeamChatRoomId(teamRoom.id);
-        setCurrentChatRoomId(teamRoom.id);
-        await fetchMessages(false, teamRoom.id, "TEAM");
-        // WebSocket으로 팀 채팅방 참여
-        wsClientRef.current.joinRoom("", "TEAM");
-      } catch (error) {
-        console.error("팀 채팅방 로드 실패:", error);
-      }
-    } else {
-      // 다른 사용자 클릭 시 개인 채팅
-      try {
-        // 기존 채팅방에서 나가기
-        if (currentChatRoomId) {
-          wsClientRef.current.leaveRoom(currentChatRoomId);
-        }
-
-        // 개인 채팅방 생성/조회
-        const room = await getDirectChatRoom(memberId);
-
-        // 상태 변경
-        setChatType("DIRECT");
-        setSelectedUserId(memberId);
-        setSelectedUserName(memberName);
-        setCurrentChatRoomId(room.id);
-
-        // 메시지 초기화 및 개인 채팅방 로드
-        setMessages([]);
-        await fetchMessages(false, room.id, "DIRECT");
-
-        // WebSocket으로 개인 채팅방 참여
-        wsClientRef.current.joinRoom(room.id, "DIRECT");
-      } catch (error: any) {
-        console.error("개인 채팅방 생성 실패:", error);
-        alert(error.message || "개인 채팅방을 생성하는데 실패했습니다.");
-      }
+      await fetchMessages(false, room.id, "DIRECT");
+      wsClientRef.current.joinRoom(room.id, "DIRECT");
+    } catch (error: any) {
+      console.error("개인 채팅방 생성 실패:", error);
+      alert(error.message || "개인 채팅방을 생성하는데 실패했습니다.");
     }
   };
 
@@ -421,12 +654,21 @@ const ChatPage = () => {
           }
 
           // 같은 내용의 임시 메시지 찾기 (내가 보낸 메시지인 경우)
-          const tempMessageIndex = prev.findIndex(
-            (m) =>
-              m.id.startsWith("temp-") &&
-              m.content === newMsg.content &&
-              m.senderId === newMsg.senderId
-          );
+          const tempMessageIndex = prev.findIndex((m) => {
+            if (!m.id.startsWith("temp-")) return false;
+            if (m.senderId !== newMsg.senderId) return false;
+            if (newMsg.clientMessageId && m.id === newMsg.clientMessageId) {
+              return true;
+            }
+            const sameContent = m.content === newMsg.content;
+            const sameAttachments =
+              JSON.stringify(m.attachments || []) ===
+              JSON.stringify(newMsg.attachments || []);
+            const sameLinks =
+              JSON.stringify(m.links || []) ===
+              JSON.stringify(newMsg.links || []);
+            return sameContent && sameAttachments && sameLinks;
+          });
 
           if (tempMessageIndex !== -1) {
             // 임시 메시지를 실제 메시지로 교체
@@ -569,7 +811,9 @@ const ChatPage = () => {
         } else {
           setChatType("DIRECT");
           setSelectedUserId(queryUserId);
-          setSelectedUserName(resolvedDirectName);
+          setSelectedUserName(
+            queryUserId === user?.id ? "내게 쓰기" : resolvedDirectName
+          );
           setCurrentChatRoomId(queryRoomId);
           setMessages([]);
           await fetchMessages(false, queryRoomId, "DIRECT");
@@ -705,60 +949,131 @@ const ChatPage = () => {
       onMenuClick={handleLeftMenu}
       sidebarVariant="default"
     >
-      <div className="bg-white rounded-3xl shadow-sm flex flex-col h-[calc(100vh-200px)]">
+      <div className="bg-white rounded-2xl md:rounded-3xl shadow-sm flex flex-col min-h-[300px] h-[calc(100vh-10rem)] md:h-[calc(100vh-200px)] w-full min-w-0">
         {/* 채팅 헤더 */}
-        <div className="border-b border-gray-200 p-4">
-          <div className="flex items-center gap-4">
-            <h2 className="text-xl font-bold text-gray-800 whitespace-nowrap">
+        <div className="border-b border-gray-200 p-3 md:p-4 space-y-2 md:space-y-3 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 md:gap-4 min-w-0">
+            <h2 className="text-lg md:text-xl font-bold text-gray-800 truncate">
               {chatType === "TEAM"
                 ? "팀 채팅"
                 : selectedUserName
-                  ? `${selectedUserName}님과의 채팅`
+                  ? selectedUserName
                   : "개인 채팅"}
             </h2>
-            {/* 참여자 목록 */}
+            <span
+              className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                chatType === "TEAM"
+                  ? "bg-blue-50 text-blue-700"
+                  : selectedUserId === user?.id
+                    ? "bg-violet-50 text-violet-700"
+                    : "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {chatType === "TEAM"
+                ? "팀 채팅"
+                : selectedUserId === user?.id
+                  ? "내게 쓰기"
+                  : "개인 채팅"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              onClick={openTeamChat}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                chatType === "TEAM"
+                  ? "bg-[#7F55B1] text-white shadow-sm"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              팀 채팅
+            </button>
+            <button
+              onClick={openSelfChat}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                chatType === "DIRECT" && selectedUserId === user?.id
+                  ? "bg-[#7F55B1] text-white shadow-sm"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              {user?.picture ? (
+                <Image
+                  src={user.picture}
+                  alt={user.name}
+                  width={20}
+                  height={20}
+                  className="rounded-full"
+                />
+              ) : (
+                <div className="w-5 h-5 rounded-full bg-[#7F55B1] text-white flex items-center justify-center text-[10px] font-semibold">
+                  {user?.name?.charAt(0) || "나"}
+                </div>
+              )}
+              내게 쓰기
+            </button>
+            <div className="text-xs text-gray-400 ml-1">개인 채팅</div>
             <div className="flex items-center gap-2 overflow-x-auto flex-1 scrollbar-hide">
               {teamMembers.length > 0 ? (
-                teamMembers.map((member) => {
-                  const isCurrentUser = member.id === user?.id;
-                  const roomId = isCurrentUser
-                    ? teamChatRoomId
-                    : directRoomIds[member.id];
-                  const unreadCount = roomId ? unreadByRoomId[roomId] || 0 : 0;
-                  return (
-                    <button
-                      key={member.id}
-                      onClick={() => handleMemberClick(member.id, member.name)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 transition-colors ${
-                        isCurrentUser
-                          ? "bg-[#7F55B1] text-white shadow-sm"
-                          : selectedUserId === member.id
+                teamMembers
+                  .filter((member) => member.id !== user?.id)
+                  .map((member) => {
+                    const roomId = directRoomIds[member.id];
+                    const unreadCount = roomId
+                      ? unreadByRoomId[roomId] || 0
+                      : 0;
+                    return (
+                      <button
+                        key={member.id}
+                        onClick={() =>
+                          handleMemberClick(member.id, member.name)
+                        }
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 transition-colors ${
+                          selectedUserId === member.id
                             ? "bg-[#7F55B1] text-white shadow-sm"
                             : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                      }`}
-                    >
-                      <div
-                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                          isCurrentUser
-                            ? "bg-white/20 text-white"
-                            : "bg-[#7F55B1] text-white"
                         }`}
                       >
-                        {member.name.charAt(0)}
-                      </div>
-                      <span className="text-sm font-medium">{member.name}</span>
-                      {unreadCount > 0 && (
-                        <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">
-                          {unreadCount}
+                        {member.picture ? (
+                          <Image
+                            src={member.picture}
+                            alt={member.name}
+                            width={24}
+                            height={24}
+                            className="rounded-full"
+                          />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-[#7F55B1] text-white flex items-center justify-center text-xs font-medium">
+                            {member.name.charAt(0)}
+                          </div>
+                        )}
+                        <span className="text-sm font-medium">
+                          {member.name}
                         </span>
-                      )}
-                    </button>
-                  );
-                })
+                        {unreadCount > 0 && (
+                          <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
               ) : (
                 <span className="text-sm text-gray-400">로딩 중...</span>
               )}
             </div>
+            <button
+              type="button"
+              onClick={handleSummarizeChat}
+              disabled={
+                isSummarizing || !currentChatRoomId || messages.length === 0
+              }
+              className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-r from-[#7F55B1] to-purple-500 hover:from-[#6B479A] hover:to-purple-600 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 font-bold tracking-wide">
+                AI
+              </span>
+              {isSummarizing ? "요약 중..." : "요약하기"}
+            </button>
           </div>
         </div>
 
@@ -870,9 +1185,77 @@ const ChatPage = () => {
                             maxWidth: "70%",
                           }}
                         >
-                          <p className="text-sm whitespace-pre-wrap break-words">
-                            {message.content}
-                          </p>
+                          {message.content && (
+                            <p className="text-sm whitespace-pre-wrap break-words">
+                              {renderMessageContent(message.content)}
+                            </p>
+                          )}
+                          {message.attachments &&
+                            message.attachments.length > 0 && (
+                              <div className="mt-2 space-y-2">
+                                {message.attachments.map((file, fileIdx) => (
+                                  <div key={`${message.id}-file-${fileIdx}`}>
+                                    {file.type === "image" ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        src={file.url}
+                                        alt={
+                                          normalizeFilename(file.name) ||
+                                          "attachment"
+                                        }
+                                        className="max-w-full sm:max-w-[220px] rounded-lg cursor-pointer hover:opacity-90"
+                                        onClick={() =>
+                                          setImageModal({
+                                            url: file.url,
+                                            name: normalizeFilename(file.name),
+                                          })
+                                        }
+                                      />
+                                    ) : (
+                                      <video
+                                        src={file.url}
+                                        controls
+                                        className="max-w-full sm:max-w-[220px] rounded-lg"
+                                      />
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          {message.links && message.links.length > 0 && (
+                            <div className="mt-2 space-y-2">
+                              {message.links.map((link, linkIdx) => (
+                                <a
+                                  key={`${message.id}-link-${linkIdx}`}
+                                  href={link.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`block rounded-lg border ${
+                                    isOwnGroup
+                                      ? "border-white/30"
+                                      : "border-gray-200"
+                                  } p-3`}
+                                >
+                                  {link.image && (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={link.image}
+                                      alt={link.title || "link preview"}
+                                      className="w-full max-w-full sm:max-w-[220px] rounded-md mb-2"
+                                    />
+                                  )}
+                                  <p className="text-sm font-semibold break-words">
+                                    {link.title || link.url}
+                                  </p>
+                                  {link.description && (
+                                    <p className="text-xs opacity-80 mt-1 line-clamp-2">
+                                      {link.description}
+                                    </p>
+                                  )}
+                                </a>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         {/* 시간 표시 - 그룹의 마지막 메시지에만 표시 */}
@@ -906,25 +1289,173 @@ const ChatPage = () => {
           onSubmit={handleSendMessage}
           className="border-t border-gray-200 p-4"
         >
+          {attachedFiles.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {attachedFiles.map((file, idx) => (
+                <div
+                  key={`${file.name}-${idx}`}
+                  className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2 text-xs"
+                >
+                  {attachedPreviews[idx]?.type === "image" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={attachedPreviews[idx].url}
+                      alt={attachedPreviews[idx].name}
+                      className="w-8 h-8 rounded-md object-cover"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-md bg-gray-300 flex items-center justify-center text-[10px] text-gray-700">
+                      VIDEO
+                    </div>
+                  )}
+                  <span className="max-w-[80px] sm:max-w-[120px] truncate">{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(idx)}
+                    className="text-gray-500 hover:text-red-500"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2">
+            <label className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg cursor-pointer text-sm text-gray-600 hover:bg-gray-200">
+              📎
+              <input
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                onChange={(e) => handleFileChange(e.target.files)}
+                className="hidden"
+              />
+            </label>
             <input
               type="text"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="메시지를 입력하세요..."
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7F55B1]"
-              disabled={isSending}
+              disabled={isSending || isUploading}
             />
             <button
               type="submit"
-              disabled={!newMessage.trim() || isSending || !isConnected}
+              disabled={
+                (!newMessage.trim() && attachedFiles.length === 0) ||
+                isSending ||
+                isUploading ||
+                !isConnected
+              }
               className="px-6 py-2 bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {!isConnected ? "연결 중..." : isSending ? "전송 중..." : "전송"}
+              {!isConnected
+                ? "연결 중..."
+                : isUploading
+                  ? "업로드 중..."
+                  : isSending
+                    ? "전송 중..."
+                    : "전송"}
             </button>
           </div>
         </form>
       </div>
+      {imageModal && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setImageModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-3xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <span className="text-sm text-gray-700 truncate">
+                {imageModal.name || "첨부 이미지"}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() =>
+                    handleDownloadImage(imageModal.url, imageModal.name)
+                  }
+                  className="text-sm text-[#7F55B1] hover:underline"
+                >
+                  다운로드
+                </button>
+                <button
+                  onClick={() => setImageModal(null)}
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+            <div className="p-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageModal.url}
+                alt={imageModal.name || "첨부 이미지"}
+                className="w-full max-h-[70vh] object-contain rounded-lg"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      {summaryModal && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setSummaryModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">채팅 요약</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  최근 {summaryModal.messageCount}개 메시지 기준
+                </p>
+              </div>
+              <button
+                onClick={() => setSummaryModal(null)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              <div className="rounded-xl bg-violet-50 p-4">
+                <p className="text-xs font-semibold text-violet-700 mb-1">
+                  핵심 논의
+                </p>
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                  {summaryModal.summary?.discussion ?? "-"}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-blue-50 p-4">
+                <p className="text-xs font-semibold text-blue-700 mb-1">
+                  결정 사항
+                </p>
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                  {summaryModal.summary?.decisions ?? "-"}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-emerald-50 p-4">
+                <p className="text-xs font-semibold text-emerald-700 mb-1">
+                  액션 아이템
+                </p>
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                  {summaryModal.summary?.actionItems ?? "-"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 };

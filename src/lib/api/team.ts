@@ -1,5 +1,5 @@
 // team.ts - 팀 API 함수
-import { apiRequest, getTeamMembers } from "./users";
+import { apiRequest, getTeamMembers, getTeamMembersOnline } from "./users";
 import type { TeamMember } from "./users";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
@@ -24,6 +24,13 @@ export interface Team {
  */
 export const getCurrentTeamMembers = async (): Promise<TeamMember[]> => {
   return getTeamMembers();
+};
+
+export const getCurrentTeamMembersOnline = async (): Promise<
+  Record<string, boolean>
+> => {
+  const response = await getTeamMembersOnline();
+  return response.onlineMap || {};
 };
 
 // 팀 생성
@@ -55,4 +62,18 @@ export const getTeams = async (): Promise<{
     method: "GET",
   });
   return response as { teams: Team[]; currentTeamName: string | null };
+};
+
+export const updateTeamMemberRole = async (memberId: string, role: string) => {
+  return apiRequest(`/api/team/members/${memberId}/role`, {
+    method: "PUT",
+    body: JSON.stringify({ role }),
+  });
+};
+
+export const renameTeam = async (newName: string) => {
+  return apiRequest("/api/team/rename", {
+    method: "PUT",
+    body: JSON.stringify({ newName }),
+  });
 };

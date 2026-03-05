@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require("../db/prisma");
 const authenticate = require("../middleware/auth");
 const { createNotificationsForUsers } = require("../utils/notifications");
+const MEETING_TYPES = ["MEETING_ROOM", "MEETING"];
 
 // 모든 라우트에 인증 미들웨어 적용
 router.use(authenticate);
@@ -59,7 +60,7 @@ router.get("/events/pending", async (req, res) => {
     const { userId, role, teamName } = req.user;
 
     // 팀장 이상만 조회 가능
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+    if (!["TEAM_LEAD"].includes(role)) {
       return res.status(403).json({ error: "권한이 없습니다." });
     }
 
@@ -174,6 +175,37 @@ router.post("/events", async (req, res) => {
       },
     });
 
+    // 회의/회의실 생성 시 팀원에게 알림 전송
+    if (MEETING_TYPES.includes(type) && status === "APPROVED") {
+      try {
+        const members = await prisma.user.findMany({
+          where: { teamName },
+          select: { id: true },
+        });
+        const targets = members.map((m) => m.id).filter((id) => id !== userId);
+
+        if (targets.length > 0) {
+          await createNotificationsForUsers(prisma, targets, {
+            type: "meeting_scheduled",
+            title: "새 회의 일정이 등록되었습니다",
+            message: `${event.title} (${new Date(event.startDate).toLocaleString("ko-KR")})`,
+            link: `/calendar?eventId=${event.id}`,
+          });
+
+          const chatWSS = require("../server").chatWSS;
+          if (chatWSS) {
+            targets.forEach((targetId) => {
+              chatWSS.broadcastToUser(targetId, {
+                type: "notification_update",
+              });
+            });
+          }
+        }
+      } catch (notifyError) {
+        console.error("회의 일정 알림 생성 오류:", notifyError);
+      }
+    }
+
     // 연차/휴가 신청인 경우 팀장 이상에게 WebSocket 알림 전송
     if ((type === "LEAVE" || type === "VACATION") && status === "PENDING") {
       try {
@@ -181,7 +213,7 @@ router.post("/events", async (req, res) => {
         const teamLeads = await prisma.user.findMany({
           where: {
             teamName: teamName,
-            role: { in: ["TEAM_LEAD", "MANAGER", "DIRECTOR"] },
+            role: { in: ["TEAM_LEAD"] },
           },
           select: { id: true },
         });
@@ -242,7 +274,7 @@ router.put("/events/:id/approve", async (req, res) => {
     const { userId, role, teamName } = req.user;
 
     // 팀장 이상만 승인 가능
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+    if (!["TEAM_LEAD"].includes(role)) {
       return res.status(403).json({ error: "승인 권한이 없습니다." });
     }
 
@@ -324,7 +356,7 @@ router.put("/events/:id/reject", async (req, res) => {
     const { comment } = req.body;
 
     // 팀장 이상만 거절 가능
-    if (!["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role)) {
+    if (!["TEAM_LEAD"].includes(role)) {
       return res.status(403).json({ error: "거절 권한이 없습니다." });
     }
 
@@ -401,6 +433,116 @@ router.put("/events/:id/reject", async (req, res) => {
   }
 });
 
+// 일정 수정 (본인이 요청한 일정 또는 팀장 이상만)
+router.put("/events/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, role, teamName } = req.user;
+    const { type, title, description, startDate, endDate, location } = req.body;
+
+    const event = await prisma.calendarEvent.findUnique({
+      where: { id },
+    });
+
+    if (!event) {
+      return res.status(404).json({ error: "일정을 찾을 수 없습니다." });
+    }
+
+    if (event.teamId !== teamName) {
+      return res.status(403).json({ error: "권한이 없습니다." });
+    }
+
+    const canEdit =
+      event.requestedBy === userId || ["TEAM_LEAD"].includes(role);
+    if (!canEdit) {
+      return res.status(403).json({ error: "수정 권한이 없습니다." });
+    }
+
+    if (!type || !title || !startDate || !endDate) {
+      return res.status(400).json({ error: "필수 정보가 누락되었습니다." });
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return res.status(400).json({ error: "날짜 형식이 올바르지 않습니다." });
+    }
+
+    if (start >= end) {
+      return res.status(400).json({
+        error: "종료일시는 시작일시보다 이후여야 합니다.",
+      });
+    }
+
+    if ((type === "MEETING_ROOM" || type === "MEETING") && !location) {
+      return res.status(400).json({
+        error: "회의실/미팅 예약 시 장소를 입력해주세요.",
+      });
+    }
+
+    if (type === "MEETING_ROOM") {
+      const conflictingEvent = await prisma.calendarEvent.findFirst({
+        where: {
+          id: { not: id },
+          type: "MEETING_ROOM",
+          location: location,
+          status: "APPROVED",
+          OR: [
+            {
+              startDate: { lte: start },
+              endDate: { gte: start },
+            },
+            {
+              startDate: { lte: end },
+              endDate: { gte: end },
+            },
+            {
+              startDate: { gte: start },
+              endDate: { lte: end },
+            },
+          ],
+        },
+      });
+
+      if (conflictingEvent) {
+        return res.status(409).json({
+          error: "해당 시간대에 이미 예약된 회의실입니다.",
+        });
+      }
+    }
+
+    const status =
+      type === "MEETING_ROOM" || type === "MEETING" ? "APPROVED" : event.status;
+
+    const updatedEvent = await prisma.calendarEvent.update({
+      where: { id },
+      data: {
+        type,
+        title,
+        description: description || null,
+        startDate: start,
+        endDate: end,
+        location: location || null,
+        status,
+      },
+      include: {
+        requester: {
+          select: { id: true, name: true, email: true },
+        },
+        approver: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
+
+    res.json(updatedEvent);
+  } catch (error) {
+    console.error("일정 수정 오류:", error);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
 // 일정 삭제 (본인이 요청한 일정만)
 router.delete("/events/:id", async (req, res) => {
   try {
@@ -418,8 +560,7 @@ router.delete("/events/:id", async (req, res) => {
 
     // 본인이 요청한 일정이거나 팀장 이상만 삭제 가능
     const canDelete =
-      event.requestedBy === userId ||
-      ["TEAM_LEAD", "MANAGER", "DIRECTOR"].includes(role);
+      event.requestedBy === userId || ["TEAM_LEAD"].includes(role);
 
     if (!canDelete) {
       return res.status(403).json({ error: "삭제 권한이 없습니다." });

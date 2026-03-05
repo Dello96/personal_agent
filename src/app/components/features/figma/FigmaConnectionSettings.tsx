@@ -23,7 +23,11 @@ const EVENT_TYPE_OPTIONS = [
   { value: "DEV_MODE_STATUS_UPDATE", label: "Dev Mode 상태 변경" },
 ];
 
+const getEventLabel = (value: string) =>
+  EVENT_TYPE_OPTIONS.find((opt) => opt.value === value)?.label ?? value;
+
 export default function FigmaConnectionSettings() {
+  const isWebhookAvailable = false;
   const [connection, setConnection] = useState<FigmaConnection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +37,10 @@ export default function FigmaConnectionSettings() {
   const [accessToken, setAccessToken] = useState("");
   const [context, setContext] = useState<"team" | "project" | "file">("team");
   const [contextId, setContextId] = useState("");
-  const [eventType, setEventType] = useState("FILE_UPDATE");
+  const [eventTypes, setEventTypes] = useState<string[]>([
+    "FILE_UPDATE",
+    "FILE_VERSION_UPDATE",
+  ]);
 
   const loadConnection = async () => {
     try {
@@ -42,7 +49,15 @@ export default function FigmaConnectionSettings() {
       setConnection(data);
       setContext(data.context as "team" | "project" | "file");
       setContextId(data.contextId);
-      setEventType(data.eventType);
+      if (data.eventTypes && data.eventTypes.length > 0) {
+        setEventTypes(data.eventTypes);
+      } else if (data.eventType) {
+        setEventTypes(
+          data.eventType.includes(",")
+            ? data.eventType.split(",").map((t) => t.trim())
+            : [data.eventType]
+        );
+      }
       setError(null);
     } catch (e: unknown) {
       const err = e as { message?: string };
@@ -66,17 +81,18 @@ export default function FigmaConnectionSettings() {
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!accessToken || !contextId || !eventType) {
+    const trimmedAccessToken = accessToken.trim();
+    if (!trimmedAccessToken || !contextId || eventTypes.length === 0) {
       setError("토큰, Context ID, 이벤트 타입을 모두 입력해주세요.");
       return;
     }
     try {
       setIsConnecting(true);
       const result = await connectFigma({
-        accessToken,
+        accessToken: trimmedAccessToken,
         context,
         contextId: contextId.trim(),
-        eventType,
+        eventTypes,
       });
       setConnection(result);
       setAccessToken("");
@@ -128,6 +144,14 @@ export default function FigmaConnectionSettings() {
         </div>
       )}
 
+      {!isWebhookAvailable && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <p className="text-sm text-yellow-800 font-medium">
+            Figma Organization 플랜 이상 가입 후 사용 가능합니다.
+          </p>
+        </div>
+      )}
+
       {connection ? (
         <div className="space-y-4">
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
@@ -141,7 +165,14 @@ export default function FigmaConnectionSettings() {
               </p>
               <p className="text-sm text-gray-700">
                 <span className="font-semibold">이벤트:</span>{" "}
-                {connection.eventType}
+                {(connection.eventTypes && connection.eventTypes.length > 0
+                  ? connection.eventTypes
+                  : connection.eventType
+                    ? connection.eventType.split(",").map((t) => t.trim())
+                    : []
+                )
+                  .map((value) => getEventLabel(value))
+                  .join(", ")}
               </p>
               <p className="text-sm text-gray-700">
                 <span className="font-semibold">상태:</span>{" "}
@@ -158,7 +189,7 @@ export default function FigmaConnectionSettings() {
           <button
             type="button"
             onClick={handleDisconnect}
-            disabled={isDisconnecting}
+            disabled={isDisconnecting || !isWebhookAvailable}
             className="w-full px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isDisconnecting ? "해제 중..." : "연결 해제"}
@@ -177,6 +208,7 @@ export default function FigmaConnectionSettings() {
               placeholder="figd_xxxxxxxxxxxx"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#A259FF]"
               required
+              disabled={!isWebhookAvailable}
             />
             <p className="mt-1 text-xs text-gray-500">
               Figma → Settings → Personal access tokens. scope에 webhooks:write
@@ -194,6 +226,7 @@ export default function FigmaConnectionSettings() {
                 setContext(e.target.value as "team" | "project" | "file")
               }
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#A259FF]"
+              disabled={!isWebhookAvailable}
             >
               {CONTEXT_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -214,6 +247,7 @@ export default function FigmaConnectionSettings() {
               placeholder="예: 1170245155647481265 (팀 URL의 team/ 뒤 숫자)"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#A259FF]"
               required
+              disabled={!isWebhookAvailable}
             />
             <p className="mt-1 text-xs text-gray-500">
               팀: figma.com/files/team/숫자 → 숫자만 입력. 파일: URL의 file/ 뒤
@@ -225,22 +259,39 @@ export default function FigmaConnectionSettings() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               구독할 이벤트
             </label>
-            <select
-              value={eventType}
-              onChange={(e) => setEventType(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#A259FF]"
-            >
-              {EVENT_TYPE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-2">
+              {EVENT_TYPE_OPTIONS.map((opt) => {
+                const checked = eventTypes.includes(opt.value);
+                return (
+                  <label
+                    key={opt.value}
+                    className="flex items-center gap-2 text-sm text-gray-700"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setEventTypes((prev) => [...prev, opt.value]);
+                        } else {
+                          setEventTypes((prev) =>
+                            prev.filter((v) => v !== opt.value)
+                          );
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-gray-300 text-[#A259FF] focus:ring-[#A259FF]"
+                      disabled={!isWebhookAvailable}
+                    />
+                    {opt.label}
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
           <button
             type="submit"
-            disabled={isConnecting}
+            disabled={isConnecting || !isWebhookAvailable}
             className="w-full px-4 py-2 bg-[#A259FF] text-white rounded-lg hover:bg-[#8B3DFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isConnecting ? "연결 중..." : "Figma 웹훅 연결"}
