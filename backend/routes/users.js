@@ -147,4 +147,37 @@ router.get("/team-members", async (req, res) => {
   }
 });
 
+// 현재 팀원 온라인 상태 조회
+router.get("/team-members/online", async (req, res) => {
+  try {
+    const teamName = req.user.teamName;
+    if (!teamName || typeof teamName !== "string" || teamName.trim() === "") {
+      return res.status(400).json({
+        error: "팀에 속해있지 않습니다. 먼저 팀에 가입해주세요.",
+      });
+    }
+
+    const normalizedTeamName = teamName.trim();
+    const members = await prisma.user.findMany({
+      where: { teamName: normalizedTeamName },
+      select: { id: true },
+    });
+    const memberIds = members.map((m) => m.id);
+
+    const chatWSS = require("../server").chatWSS;
+    const onlineMap =
+      chatWSS && typeof chatWSS.getOnlineStatusMap === "function"
+        ? chatWSS.getOnlineStatusMap(memberIds)
+        : memberIds.reduce((acc, id) => {
+            acc[id] = false;
+            return acc;
+          }, {});
+
+    return res.json({ onlineMap });
+  } catch (error) {
+    console.error("팀원 온라인 상태 조회 오류:", error);
+    return res.status(500).json({ error: "서버 오류" });
+  }
+});
+
 module.exports = router;

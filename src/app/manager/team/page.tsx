@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   getCurrentTeamMembers,
+  getCurrentTeamMembersOnline,
   renameTeam,
   updateTeamMemberRole,
 } from "@/lib/api/team";
@@ -34,6 +35,7 @@ export default function TeamManagementPage() {
   const [newTeamName, setNewTeamName] = useState("");
   const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [onlineMap, setOnlineMap] = useState<Record<string, boolean>>({});
 
   const isTeamLeadOrAbove = user?.role === "TEAM_LEAD";
 
@@ -73,6 +75,29 @@ export default function TeamManagementPage() {
     };
     loadMembers();
   }, []);
+
+  useEffect(() => {
+    if (!user?.teamName) return;
+
+    let disposed = false;
+    const syncOnlineStatus = async () => {
+      try {
+        const map = await getCurrentTeamMembersOnline();
+        if (!disposed) setOnlineMap(map);
+      } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("온라인 상태 조회 실패:", error);
+        }
+      }
+    };
+
+    syncOnlineStatus();
+    const interval = setInterval(syncOnlineStatus, 10000);
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+    };
+  }, [user?.teamName]);
 
   const memberCountText = useMemo(
     () => `${members.length}명`,
@@ -261,7 +286,15 @@ export default function TeamManagementPage() {
                   className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 bg-gray-50 rounded-xl"
                 >
                   <div>
-                    <p className="text-sm font-semibold text-gray-800">
+                    <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                      <span
+                        className={`inline-block w-2.5 h-2.5 rounded-full ${
+                          onlineMap[member.id]
+                            ? "bg-green-500 shadow-[0_0_0_3px_rgba(34,197,94,0.15)]"
+                            : "bg-gray-300"
+                        }`}
+                        title={onlineMap[member.id] ? "온라인" : "오프라인"}
+                      />
                       {member.name}
                     </p>
                     <p className="text-xs text-gray-500">{member.email}</p>

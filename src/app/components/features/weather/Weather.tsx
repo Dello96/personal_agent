@@ -28,6 +28,18 @@ export default function Weather() {
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<WeatherResult | null>(null);
   const [weatherError, setWeatherError] = useState<string | null>(null);
+  const currentDateTime = new Date();
+  const formatter = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    hour: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(currentDateTime);
+  const hourStr = parts.find((p) => p.type === "hour")?.value ?? "00";
+  const hour = Number(hourStr);
+  const isDaytime = hour >= 6 && hour < 18; // KST 기준 아침 6시 ~ 오후 6시 전까지
+  // 낮/밤 이미지를 아직 준비하지 않은 경우, 임시로 동일 이미지 사용
+  const bgImage = cloudy;
 
   const fetchLocation = () => {
     setLocationError(null);
@@ -67,6 +79,7 @@ export default function Weather() {
       setLoading(true);
       try {
         const res = await getWeatherData(location.latitude, location.longitude);
+        console.log("[Weather] response from getWeatherData", res);
         if (res.ok && res.data) {
           setResult(res);
           setWeatherError(null);
@@ -89,7 +102,6 @@ export default function Weather() {
 
   return (
     <div>
-      <div className="flex bg-black/40"></div>
       {loading && !result?.data && (
         <p className="mt-2 text-gray-400 text-sm">위치·날씨 불러오는 중...</p>
       )}
@@ -100,29 +112,84 @@ export default function Weather() {
         <p className="mt-2 text-red-500 text-sm">{weatherError}</p>
       )}
       {result?.data && (
-        <div className="mt-3 p-3 bg-black/20 rounded-lg">
-          <p className="font-medium">{result.data.name ?? "현재 위치"}</p>
+        <div className="relative mt-2 overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500/80 via-sky-600/80 to-slate-900/90 text-white shadow-lg">
+          <div className="absolute inset-0 opacity-25">
+            <Image
+              src={bgImage}
+              alt={isDaytime ? "Daytime sky" : "Night sky"}
+              fill
+              className="object-cover"
+              priority
+            />
+          </div>
 
-          <p className="text-2xl font-bold">
-            {Math.round(result.data.main?.temp ?? 0)}°C
-          </p>
-          <p className="text-gray-300">
-            {result.data.weather?.[0]?.description ?? "-"}
-          </p>
-          <p className="text-sm text-gray-400">
-            체감 {Math.round(result.data.main?.feels_like ?? 0)}°C · 습도{" "}
-            {result.data.main?.humidity ?? 0}%
-          </p>
+          <div className="relative p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-wide text-slate-100/80">
+                  {result.data.name ?? "현재 위치"}
+                </p>
+                <p className="text-3xl font-semibold leading-tight">
+                  {Math.round(result.data.main?.temp ?? 0)}°C
+                </p>
+                <p className="text-sm text-slate-100/90">
+                  체감 {Math.round(result.data.main?.feels_like ?? 0)}°C · 습도{" "}
+                  {result.data.main?.humidity ?? 0}%
+                </p>
+              </div>
+
+              <div className="shrink-0 text-5xl">
+                {result.data.weather?.[0]?.description === "맑음" ? (
+                  isDaytime ? (
+                    <span>☀️</span>
+                  ) : (
+                    <span>🌕</span>
+                  )
+                ) : result.data.weather?.[0]?.description === "구름많음" ? (
+                  isDaytime ? (
+                    <span>⛅️</span>
+                  ) : (
+                    <span className="relative inline-flex items-center">
+                      <span className="absolute left-1 top-0 z-0 text-3xl">
+                        🌕
+                      </span>
+                      <span className="relative z-10 ml-1 text-5xl">☁️</span>
+                    </span>
+                  )
+                ) : result.data.weather?.[0]?.description === "구름조금" ? (
+                  isDaytime ? (
+                    <span>🌤️</span>
+                  ) : (
+                    <span className="relative inline-flex items-center">
+                      <span className="absolute left-1 top-0 z-0 text-4xl">
+                        🌕
+                      </span>
+                      <span className="relative z-10 ml-1 text-5xl">☁️</span>
+                    </span>
+                  )
+                ) : result.data.weather?.[0]?.description === "흐림" ? (
+                  <span>☁️</span>
+                ) : (
+                  <span>-</span>
+                )}
+              </div>
+            </div>
+
+            <p className="mt-2 text-xs text-slate-100/80">
+              {result.data.weather?.[0]?.description ?? "-"}
+            </p>
+
+            {location && (
+              <button
+                type="button"
+                onClick={fetchLocation}
+                className="mt-3 text-xs text-slate-100/80 underline underline-offset-2 hover:text-white"
+              >
+                위치 새로고침
+              </button>
+            )}
+          </div>
         </div>
-      )}
-      {location && (
-        <button
-          type="button"
-          onClick={fetchLocation}
-          className="mt-2 text-sm text-gray-400 hover:text-white underline"
-        >
-          위치 새로고침
-        </button>
       )}
     </div>
   );

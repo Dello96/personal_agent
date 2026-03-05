@@ -72,6 +72,22 @@ export interface Task {
   } | null;
 }
 
+export interface AiTaskParseInputMember {
+  name?: string;
+  email?: string;
+}
+
+export interface AiParsedTaskResult {
+  title: string;
+  description: string;
+  assigneeName: string | null;
+  assigneeEmail: string | null;
+  dueDate: string | null;
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  confidence: number;
+  warnings: string[];
+}
+
 // 업무 생성
 export const createTask = async (data: {
   title: string;
@@ -87,6 +103,21 @@ export const createTask = async (data: {
   githubAccessToken?: string;
 }): Promise<Task> => {
   return apiRequest("/api/tasks", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+// 자연어 업무 파싱 (OpenAI)
+export const parseTaskFromNaturalLanguage = async (data: {
+  text: string;
+  teamMembers?: AiTaskParseInputMember[];
+}): Promise<{
+  ok: boolean;
+  model: string;
+  parsedTask: AiParsedTaskResult;
+}> => {
+  return apiRequest("/api/ai/tasks/parse", {
     method: "POST",
     body: JSON.stringify(data),
   });

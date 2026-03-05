@@ -11,6 +11,8 @@ import {
   getDirectChatRoom,
   getChatRoom,
   uploadChatFiles,
+  summarizeChat,
+  type ChatSummaryResult,
 } from "@/lib/api/chat";
 import { formatRelativeTime } from "@/lib/utils/dateFormat";
 import Image from "next/image";
@@ -54,6 +56,11 @@ const ChatPage = () => {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summaryModal, setSummaryModal] = useState<{
+    summary: ChatSummaryResult;
+    messageCount: number;
+  } | null>(null);
   const [chatType, setChatType] = useState<"TEAM" | "DIRECT">("TEAM");
   const [currentChatRoomId, setCurrentChatRoomId] = useState<string | null>(
     null
@@ -104,6 +111,8 @@ const ChatPage = () => {
       router.push("/calendar");
     } else if (menu === "채팅") {
       router.push("/chat");
+    } else if (menu === "회의록") {
+      router.push("/meeting-notes");
     } else if (menu === "팀 관리") {
       router.push("/manager/team");
     }
@@ -392,6 +401,31 @@ const ChatPage = () => {
   const handleLoadMore = () => {
     if (hasMore && !isLoading) {
       fetchMessages(true);
+    }
+  };
+
+  const handleSummarizeChat = async () => {
+    if (!currentChatRoomId) {
+      alert("요약할 채팅방이 없습니다.");
+      return;
+    }
+
+    try {
+      setIsSummarizing(true);
+      const result = await summarizeChat({
+        roomId: currentChatRoomId,
+        type: chatType,
+        limit: 80,
+      });
+      setSummaryModal({
+        summary: result.summary,
+        messageCount: result.messageCount,
+      });
+    } catch (summaryError: any) {
+      console.error("채팅 요약 실패:", summaryError);
+      alert(summaryError?.message || "채팅 요약에 실패했습니다.");
+    } finally {
+      setIsSummarizing(false);
     }
   };
 
@@ -970,6 +1004,16 @@ const ChatPage = () => {
               )}
               내게 쓰기
             </button>
+            <button
+              type="button"
+              onClick={handleSummarizeChat}
+              disabled={
+                isSummarizing || !currentChatRoomId || messages.length === 0
+              }
+              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSummarizing ? "요약 중..." : "요약하기"}
+            </button>
             <div className="text-xs text-gray-400 ml-1">개인 채팅</div>
             <div className="flex items-center gap-2 overflow-x-auto flex-1 scrollbar-hide">
               {teamMembers.length > 0 ? (
@@ -1343,6 +1387,61 @@ const ChatPage = () => {
                 alt={imageModal.name || "첨부 이미지"}
                 className="w-full max-h-[70vh] object-contain rounded-lg"
               />
+            </div>
+          </div>
+        </div>
+      )}
+      {summaryModal && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setSummaryModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">채팅 요약</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  최근 {summaryModal.messageCount}개 메시지 기준
+                </p>
+              </div>
+              <button
+                onClick={() => setSummaryModal(null)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              <div className="rounded-xl bg-violet-50 p-4">
+                <p className="text-xs font-semibold text-violet-700 mb-1">
+                  핵심 논의
+                </p>
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                  {summaryModal.summary.discussion}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-blue-50 p-4">
+                <p className="text-xs font-semibold text-blue-700 mb-1">
+                  결정 사항
+                </p>
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                  {summaryModal.summary.decisions}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-emerald-50 p-4">
+                <p className="text-xs font-semibold text-emerald-700 mb-1">
+                  액션 아이템
+                </p>
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                  {summaryModal.summary.actionItems}
+                </p>
+              </div>
             </div>
           </div>
         </div>

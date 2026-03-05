@@ -505,6 +505,25 @@ class ChatWebSocketServer {
     }
   }
 
+  // 사용자 온라인 여부 확인
+  isUserOnline(userId) {
+    const userWsSet = userConnections.get(userId);
+    if (!userWsSet || userWsSet.size === 0) return false;
+    for (const ws of userWsSet) {
+      if (ws.readyState === 1) return true;
+    }
+    return false;
+  }
+
+  // 여러 사용자 온라인 상태 맵 반환
+  getOnlineStatusMap(userIds = []) {
+    const statusMap = {};
+    userIds.forEach((userId) => {
+      statusMap[userId] = this.isUserOnline(userId);
+    });
+    return statusMap;
+  }
+
   // 특정 팀의 모든 사용자에게 메시지 전송 (외부에서 호출 가능)
   async broadcastToTeam(teamName, message) {
     try {

@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require("../db/prisma");
 const authenticate = require("../middleware/auth");
 const { createNotificationsForUsers } = require("../utils/notifications");
+const { getOpenAIClient } = require("../lib/openaiClient");
 
 // 모든 라우트에 인증 미들웨어 적용
 router.use(authenticate);
@@ -237,6 +238,154 @@ router.get("/messages", async (req, res) => {
   } catch (error) {
     console.error("메시지 조회 오류:", error);
     res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+// 채팅 요약
+router.post("/summarize", async (req, res) => {
+  try {
+    const { teamName, userId } = req.user;
+    const { roomId, type = "TEAM", limit = 80 } = req.body || {};
+
+    let chatRoom;
+
+    if (type === "TEAM") {
+      if (!teamName) {
+        return res.status(400).json({ error: "팀에 속해있지 않습니다." });
+      }
+
+      chatRoom = await prisma.chatRoom.findUnique({
+        where: { teamId: teamName },
+      });
+
+      if (!chatRoom) {
+        return res.status(404).json({ error: "팀 채팅방을 찾을 수 없습니다." });
+      }
+    } else if (type === "DIRECT" && roomId) {
+      chatRoom = await prisma.chatRoom.findFirst({
+        where: {
+          id: roomId,
+          type: "DIRECT",
+          participants: {
+            some: { userId },
+          },
+        },
+      });
+
+      if (!chatRoom) {
+        return res.status(403).json({ error: "권한이 없습니다." });
+      }
+    } else {
+      return res.status(400).json({ error: "잘못된 요청입니다." });
+    }
+
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 80, 10), 150);
+
+    const messagesDesc = await prisma.message.findMany({
+      where: { chatRoomId: chatRoom.id },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: safeLimit,
+    });
+
+    if (messagesDesc.length === 0) {
+      return res.json({
+        ok: true,
+        summary: {
+          discussion: "요약할 메시지가 없습니다.",
+          decisions: "결정 사항이 없습니다.",
+          actionItems: "액션 아이템이 없습니다.",
+        },
+        messageCount: 0,
+      });
+    }
+
+    const messages = messagesDesc.reverse();
+    const chatTranscript = messages
+      .map((msg) => {
+        const sender = msg.sender?.name || "알 수 없음";
+        const content = msg.content?.trim() || "(첨부파일/링크 중심 메시지)";
+        return `[${sender}] ${content}`;
+      })
+      .join("\n");
+
+    const client = getOpenAIClient();
+    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+
+    const completion = await client.responses.create({
+      model,
+      temperature: 0.3,
+      text: {
+        format: {
+          type: "json_schema",
+          name: "chat_summary",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              discussion: { type: "string" },
+              decisions: { type: "string" },
+              actionItems: { type: "string" },
+            },
+            required: ["discussion", "decisions", "actionItems"],
+          },
+        },
+      },
+      input: [
+        {
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text:
+                "너는 팀 채팅 요약 도우미다. 한국어로 작성하고 간결하게 정리해라. " +
+                "discussion은 핵심 논의 2~4문장, decisions는 결정 사항이 없으면 '결정 사항 없음', " +
+                "actionItems는 할 일이 없으면 '후속 액션 없음'으로 작성한다.",
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text:
+                `채팅 유형: ${type}\n` +
+                `메시지 수: ${messages.length}\n` +
+                "아래 대화를 요약해줘.\n\n" +
+                chatTranscript,
+            },
+          ],
+        },
+      ],
+    });
+
+    return res.json({
+      ok: true,
+      summary: completion.output_parsed,
+      messageCount: messages.length,
+      model,
+    });
+  } catch (error) {
+    console.error("채팅 요약 오류:", error);
+
+    const errorCode = error?.code || error?.error?.code;
+    if (errorCode === "insufficient_quota") {
+      return res.status(503).json({
+        error:
+          "AI 사용량 한도를 초과했습니다. 잠시 후 다시 시도하거나 결제 설정을 확인해 주세요.",
+      });
+    }
+
+    return res.status(500).json({ error: "채팅 요약에 실패했습니다." });
   }
 });
 

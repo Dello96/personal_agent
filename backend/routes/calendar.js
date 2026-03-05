@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require("../db/prisma");
 const authenticate = require("../middleware/auth");
 const { createNotificationsForUsers } = require("../utils/notifications");
+const MEETING_TYPES = ["MEETING_ROOM", "MEETING"];
 
 // 모든 라우트에 인증 미들웨어 적용
 router.use(authenticate);
@@ -173,6 +174,37 @@ router.post("/events", async (req, res) => {
         },
       },
     });
+
+    // 회의/회의실 생성 시 팀원에게 알림 전송
+    if (MEETING_TYPES.includes(type) && status === "APPROVED") {
+      try {
+        const members = await prisma.user.findMany({
+          where: { teamName },
+          select: { id: true },
+        });
+        const targets = members.map((m) => m.id).filter((id) => id !== userId);
+
+        if (targets.length > 0) {
+          await createNotificationsForUsers(prisma, targets, {
+            type: "meeting_scheduled",
+            title: "새 회의 일정이 등록되었습니다",
+            message: `${event.title} (${new Date(event.startDate).toLocaleString("ko-KR")})`,
+            link: `/calendar?eventId=${event.id}`,
+          });
+
+          const chatWSS = require("../server").chatWSS;
+          if (chatWSS) {
+            targets.forEach((targetId) => {
+              chatWSS.broadcastToUser(targetId, {
+                type: "notification_update",
+              });
+            });
+          }
+        }
+      } catch (notifyError) {
+        console.error("회의 일정 알림 생성 오류:", notifyError);
+      }
+    }
 
     // 연차/휴가 신청인 경우 팀장 이상에게 WebSocket 알림 전송
     if ((type === "LEAVE" || type === "VACATION") && status === "PENDING") {

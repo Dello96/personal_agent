@@ -110,6 +110,12 @@ export const getTeamMembers = async () => {
   return apiRequest("/api/users/team-members");
 };
 
+export const getTeamMembersOnline = async (): Promise<{
+  onlineMap: Record<string, boolean>;
+}> => {
+  return apiRequest("/api/users/team-members/online");
+};
+
 // 프로필 이미지 업로드
 export const uploadProfileImage = async (file: File) => {
   const formData = new FormData();

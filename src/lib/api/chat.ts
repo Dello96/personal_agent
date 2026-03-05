@@ -42,6 +42,12 @@ export interface MessagesResponse {
   nextCursor: string | null;
 }
 
+export interface ChatSummaryResult {
+  discussion: string;
+  decisions: string;
+  actionItems: string;
+}
+
 // 채팅방 조회 또는 생성
 export const getChatRoom = async (): Promise<ChatRoom> => {
   return apiRequest("/api/chat/room");
@@ -122,5 +128,22 @@ export const uploadChatFiles = async (files: File[]) => {
 export const deleteMessage = async (messageId: string): Promise<void> => {
   return apiRequest(`/api/chat/messages/${messageId}`, {
     method: "DELETE",
+  });
+};
+
+// 채팅 요약
+export const summarizeChat = async (data: {
+  roomId?: string;
+  type?: "TEAM" | "DIRECT";
+  limit?: number;
+}): Promise<{
+  ok: boolean;
+  summary: ChatSummaryResult;
+  messageCount: number;
+  model?: string;
+}> => {
+  return apiRequest("/api/chat/summarize", {
+    method: "POST",
+    body: JSON.stringify(data),
   });
 };

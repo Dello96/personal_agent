@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
 import { getTasks, Task } from "@/lib/api/tasks";
 import { TeamMember } from "@/lib/api/users";
-import { getCurrentTeamMembers } from "@/lib/api/team";
+import { getCurrentTeamMembers, getCurrentTeamMembersOnline } from "@/lib/api/team";
 import Image from "next/image";
 import AppLayout from "@/app/components/shared/AppLayout";
 import LoginContent from "@/app/components/features/auth/LoginContent";
@@ -50,6 +50,9 @@ function HomeContent() {
   // 팀원 목록 상태
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [teamMembersOnlineMap, setTeamMembersOnlineMap] = useState<
+    Record<string, boolean>
+  >({});
 
   // 사이드바 메뉴 선택 상태
   const [activeMenu, setActiveMenu] = useState("진행중인 업무");
@@ -159,6 +162,37 @@ function HomeContent() {
     fetchTeamMembers();
   }, [isLoggedIn, user?.teamName]);
 
+  // 팀원 온라인 상태 조회 (초록불 인디케이터용)
+  useEffect(() => {
+    if (!isLoggedIn || !user?.teamName) {
+      setTeamMembersOnlineMap({});
+      return;
+    }
+
+    let disposed = false;
+
+    const fetchOnlineStatus = async () => {
+      try {
+        const map = await getCurrentTeamMembersOnline();
+        if (!disposed) {
+          setTeamMembersOnlineMap(map);
+        }
+      } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("[Group] 팀원 온라인 상태 조회 실패:", error);
+        }
+      }
+    };
+
+    fetchOnlineStatus();
+    const interval = setInterval(fetchOnlineStatus, 10000);
+
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+    };
+  }, [isLoggedIn, user?.teamName]);
+
   // 로그인 처리
   useEffect(() => {
     if (loginStatus === "success") {
@@ -220,6 +254,8 @@ function HomeContent() {
       router.push("/calendar");
     } else if (menu === "채팅") {
       router.push("/chat");
+    } else if (menu === "회의록") {
+      router.push("/meeting-notes");
     } else if (menu === "진행중인 업무") {
       router.push("/");
     } else if (menu === "팀 관리") {
@@ -322,7 +358,7 @@ function HomeContent() {
             <span className="text-white text-2xl md:text-3xl">📋</span>
           </div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-800 mb-2 md:mb-3">
-            업무 관리 시스템
+            Work Together
           </h1>
           <p className="text-gray-500 text-sm md:text-base mb-6 md:mb-8">
             로그인하시면 오늘의 업무를 확인할 수 있습니다.
@@ -740,9 +776,14 @@ function HomeContent() {
                           </p>
                         </div>
                       </div>
-                      <span className="w-6 h-6 bg-[#7F55B1] text-white text-xs rounded-full flex items-center justify-center">
-                        1
-                      </span>
+                      <span
+                        className={`w-3 h-3 rounded-full ${
+                          teamMembersOnlineMap[member.id]
+                            ? "bg-green-500 shadow-[0_0_0_3px_rgba(34,197,94,0.15)]"
+                            : "bg-gray-300"
+                        }`}
+                        title={teamMembersOnlineMap[member.id] ? "온라인" : "오프라인"}
+                      />
                     </li>
                   ))}
                 </ul>

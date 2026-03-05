@@ -52,6 +52,8 @@ const CalendarPage = () => {
       router.push("/calendar");
     } else if (menu === "채팅") {
       router.push("/chat");
+    } else if (menu === "회의록") {
+      router.push("/meeting-notes");
     } else if (menu === "팀 관리") {
       router.push("/manager/team");
     }

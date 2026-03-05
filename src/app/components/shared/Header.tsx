@@ -42,14 +42,17 @@ export default function Header() {
     <header>
       <div className="bg-blue-100 flex flex-row justify-between items-center">
         <Link href="/" className="m-4 md:m-8 text-sm md:text-base">
-          Home
+          HOME
         </Link>
 
         <div className="bg-red-100 flex flex-row items-center gap-2 md:gap-4">
           {hasHydrated ? (
             isLoggedIn && user ? (
               <>
-                <Link href="/mypage" className="m-4 md:m-8 text-sm md:text-base">
+                <Link
+                  href="/mypage"
+                  className="m-4 md:m-8 text-sm md:text-base"
+                >
                   마이페이지
                 </Link>
                 <span className="m-2 md:m-8 px-2 md:px-3 py-1 bg-blue-500 text-white rounded text-xs md:text-sm">
@@ -64,7 +67,10 @@ export default function Header() {
                 </button>
               </>
             ) : (
-              <Link href="/auth/login" className="m-4 md:m-8 text-sm md:text-base">
+              <Link
+                href="/auth/login"
+                className="m-4 md:m-8 text-sm md:text-base"
+              >
                 Login
               </Link>
             )

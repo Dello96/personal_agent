@@ -26,6 +26,7 @@ model User {
   messages                Message[]         @relation("MessageSender")
   chatRoomParticipants    ChatRoomParticipant[] @relation("ChatRoomParticipant")
   notifications           Notification[]
+  meetingNotes            MeetingNote[]
 }
 
 model Team {
@@ -157,6 +158,7 @@ model CalendarEvent {
   requester User  @relation("CalendarEventRequester", fields: [requestedBy], references: [id])
   approver  User? @relation("CalendarEventApprover", fields: [approvedBy], references: [id])
   team      Team  @relation(fields: [teamId], references: [teamName])
+  meetingNotes MeetingNote[]
 
   @@index([startDate, endDate])
   @@index([teamId])
@@ -356,4 +358,20 @@ model Notification {
   @@index([userId, createdAt])
   @@index([userId, isRead, createdAt])
   @@index([userId, chatRoomId, isRead, createdAt])
+}
+
+model MeetingNote {
+  id        String   @id @default(uuid())
+  eventId   String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event  CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  author User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, authorId])
+  @@index([authorId, updatedAt])
+  @@index([eventId, updatedAt])
 }

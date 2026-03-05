@@ -18,12 +18,13 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
-const defaultMenus = ["진행중인 업무", "일정", "채팅"];
+const defaultMenus = ["진행중인 업무", "일정", "채팅", "회의록"];
 
 const getMenuIcon = (menu: string): string => {
   if (menu === "진행중인 업무") return "📋";
   if (menu === "일정") return "🗓️";
   if (menu === "채팅") return "💬";
+  if (menu === "회의록") return "📝";
   if (menu === "대시보드") return "🏠";
   if (menu === "업무 상세") return "📄";
   if (menu === "완료된 업무") return "✅";
@@ -107,6 +108,8 @@ export default function Sidebar({
         router.push("/calendar");
       } else if (menu === "채팅") {
         router.push("/chat");
+      } else if (menu === "회의록") {
+        router.push("/meeting-notes");
       } else if (menu === "팀 관리") {
         router.push("/manager/team");
       }
