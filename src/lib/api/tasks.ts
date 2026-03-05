@@ -25,6 +25,24 @@ export interface ParticipantNote {
   isOwn: boolean;
 }
 
+export interface TaskDiscussionNote {
+  id: string;
+  taskId: string;
+  authorId: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskDiscussionNoteListItem extends TaskDiscussionNote {
+  author: {
+    id: string;
+    name: string;
+    email: string;
+    picture: string | null;
+  };
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -88,6 +106,20 @@ export interface AiParsedTaskResult {
   warnings: string[];
 }
 
+export interface MostUrgentTaskHighlight {
+  score: number;
+  dueInHours: number | null;
+  isOverdue: boolean;
+  reason: string;
+  generatedByAI: boolean;
+}
+
+export interface MostUrgentTaskResponse {
+  ok: boolean;
+  task: Task | null;
+  highlight: MostUrgentTaskHighlight | null;
+}
+
 // 업무 생성
 export const createTask = async (data: {
   title: string;
@@ -126,6 +158,11 @@ export const parseTaskFromNaturalLanguage = async (data: {
 // 업무 목록 조회
 export const getTasks = async (): Promise<Task[]> => {
   return apiRequest("/api/tasks"); // GET /api/tasks/
+};
+
+// 가장 긴급한 업무 조회
+export const getMostUrgentTask = async (): Promise<MostUrgentTaskResponse> => {
+  return apiRequest("/api/tasks/most-urgent");
 };
 
 // 업무 상세 조회
@@ -184,5 +221,41 @@ export const updateTaskLinks = async (
   return apiRequest(`/api/tasks/${taskId}/links`, {
     method: "PUT",
     body: JSON.stringify({ links }),
+  });
+};
+
+// 댓글/논의 조회 (로그인 사용자 기준)
+export const getMyTaskDiscussionNote = async (
+  taskId: string
+): Promise<TaskDiscussionNote | null> => {
+  const response = await apiRequest(`/api/tasks/${taskId}/discussion`);
+  return response.note ?? null;
+};
+
+export const getTaskDiscussionNotes = async (
+  taskId: string
+): Promise<TaskDiscussionNoteListItem[]> => {
+  const response = await apiRequest(`/api/tasks/${taskId}/discussion`);
+  return response.notes ?? [];
+};
+
+// 댓글/논의 저장 (로그인 사용자 기준)
+export const saveMyTaskDiscussionNote = async (
+  taskId: string,
+  content: string
+): Promise<TaskDiscussionNote> => {
+  const response = await apiRequest(`/api/tasks/${taskId}/discussion`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
+  });
+  return response.note;
+};
+
+// 댓글/논의 삭제 (로그인 사용자 기준)
+export const deleteMyTaskDiscussionNote = async (
+  taskId: string
+): Promise<{ ok: boolean }> => {
+  return apiRequest(`/api/tasks/${taskId}/discussion`, {
+    method: "DELETE",
   });
 };

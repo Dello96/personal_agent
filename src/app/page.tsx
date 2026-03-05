@@ -3,7 +3,12 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/app/stores/authStore";
-import { getTasks, Task } from "@/lib/api/tasks";
+import {
+  getMostUrgentTask,
+  getTasks,
+  MostUrgentTaskHighlight,
+  Task,
+} from "@/lib/api/tasks";
 import { TeamMember } from "@/lib/api/users";
 import { getCurrentTeamMembers, getCurrentTeamMembersOnline } from "@/lib/api/team";
 import Image from "next/image";
@@ -25,6 +30,10 @@ function HomeContent() {
 
   const login = useAuthStore((state) => state.login);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [mostUrgentTask, setMostUrgentTask] = useState<Task | null>(null);
+  const [mostUrgentHighlight, setMostUrgentHighlight] =
+    useState<MostUrgentTaskHighlight | null>(null);
+  const [mostUrgentLoading, setMostUrgentLoading] = useState(false);
   const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
@@ -62,9 +71,21 @@ function HomeContent() {
     "NOW"
   );
   const [taskSearch, setTaskSearch] = useState("");
+  const [showDueTodayOnly, setShowDueTodayOnly] = useState(false);
   const [taskSort, setTaskSort] = useState<
     "new" | "old" | "due_asc" | "due_desc" | "priority"
   >("new");
+
+  useEffect(() => {
+    const taskTab = searchParams.get("taskTab");
+    if (taskTab === "NOW") {
+      setActiveTab("NOW");
+      return;
+    }
+    if (taskTab === "COMPLETED" || taskTab === "ENDING") {
+      setActiveTab("COMPLETED");
+    }
+  }, [searchParams]);
 
   const goToTeamJoin = () => {
     router.push("/team/join");
@@ -104,6 +125,38 @@ function HomeContent() {
     return priorityMap[priority] || { label: priority, color: "bg-gray-400" };
   };
 
+  const getDueTimeLabel = (highlight: MostUrgentTaskHighlight | null) => {
+    if (!highlight) return "마감 정보 없음";
+    if (highlight.isOverdue) return "마감 지연";
+    if (typeof highlight.dueInHours !== "number") return "마감일 미설정";
+    if (highlight.dueInHours < 1) return "1시간 이내";
+    if (highlight.dueInHours < 24) return `${Math.round(highlight.dueInHours)}시간 이내`;
+    return `${Math.ceil(highlight.dueInHours / 24)}일 이내`;
+  };
+
+  const getUrgentCardTone = (highlight: MostUrgentTaskHighlight | null) => {
+    if (!highlight) return "from-violet-500 to-purple-500";
+    if (highlight.isOverdue) return "from-red-500 to-rose-600";
+    if (typeof highlight.dueInHours === "number" && highlight.dueInHours <= 24) {
+      return "from-red-500 to-orange-500";
+    }
+    if (typeof highlight.dueInHours === "number" && highlight.dueInHours <= 72) {
+      return "from-orange-500 to-amber-500";
+    }
+    return "from-violet-500 to-purple-500";
+  };
+
+  const isDueToday = (dateString: string | null) => {
+    if (!dateString) return false;
+    const dueDate = new Date(dateString);
+    const now = new Date();
+    return (
+      dueDate.getFullYear() === now.getFullYear() &&
+      dueDate.getMonth() === now.getMonth() &&
+      dueDate.getDate() === now.getDate()
+    );
+  };
+
   // 업무 조회
   useEffect(() => {
     const fetchTasks = async () => {
@@ -129,6 +182,40 @@ function HomeContent() {
 
     fetchTasks();
   }, [isLoggedIn, user?.teamName]);
+
+  // AI 기반 긴급 업무 하이라이트 조회 (5분 주기 자동 갱신)
+  useEffect(() => {
+    const fetchMostUrgentTask = async () => {
+      if (!isLoggedIn || !user?.teamName) {
+        setMostUrgentTask(null);
+        setMostUrgentHighlight(null);
+        setMostUrgentLoading(false);
+        return;
+      }
+
+      try {
+        setMostUrgentLoading(true);
+        const result = await getMostUrgentTask();
+        setMostUrgentTask(result.task);
+        setMostUrgentHighlight(result.highlight);
+      } catch (error) {
+        setMostUrgentTask(null);
+        setMostUrgentHighlight(null);
+        if (process.env.NODE_ENV === "development") {
+          console.error("긴급 업무 조회 실패:", error);
+        }
+      } finally {
+        setMostUrgentLoading(false);
+      }
+    };
+
+    fetchMostUrgentTask();
+    const interval = setInterval(fetchMostUrgentTask, 5 * 60 * 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isLoggedIn, user?.teamName, tasks.length]);
 
   // 팀원 목록 조회 (Group 칸) — GET /api/users/team-members (현재 로그인 팀만 반환)
   useEffect(() => {
@@ -297,6 +384,9 @@ function HomeContent() {
         return target.includes(normalizedSearch);
       })
     : baseTasks;
+  const quickFilteredTasks = showDueTodayOnly
+    ? searchedTasks.filter((task) => isDueToday(task.dueDate))
+    : searchedTasks;
 
   const priorityRank: Record<string, number> = {
     URGENT: 4,
@@ -304,7 +394,7 @@ function HomeContent() {
     MEDIUM: 2,
     LOW: 1,
   };
-  const displayTasks = [...searchedTasks].sort((a, b) => {
+  const displayTasks = [...quickFilteredTasks].sort((a, b) => {
     if (taskSort === "new") {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     }
@@ -500,6 +590,55 @@ function HomeContent() {
               </div>
             </div>
 
+            {/* AI 긴급 업무 하이라이트 카드 */}
+            <div
+              className={`bg-gradient-to-r ${getUrgentCardTone(
+                mostUrgentHighlight
+              )} rounded-2xl md:rounded-3xl p-4 md:p-5 text-white shadow-lg`}
+            >
+              {mostUrgentLoading ? (
+                <div className="text-sm text-white/90">AI가 긴급 업무를 분석 중입니다...</div>
+              ) : mostUrgentTask && mostUrgentHighlight ? (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/tasksDetail/${mostUrgentTask.id}`)}
+                  className="w-full text-left"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">
+                        Most Urgent Task
+                      </p>
+                      <h3 className="mt-1 text-base md:text-lg font-bold line-clamp-1">
+                        {mostUrgentTask.title}
+                      </h3>
+                    </div>
+                    <span className="shrink-0 text-[10px] md:text-xs px-2 py-1 rounded-full bg-white/20 font-semibold">
+                      {mostUrgentHighlight.generatedByAI ? "AI 분석" : "규칙 분석"}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs md:text-sm">
+                    <span className="bg-white/15 rounded-lg px-2.5 py-1.5">
+                      ⏰ {getDueTimeLabel(mostUrgentHighlight)}
+                    </span>
+                    <span className="bg-white/15 rounded-lg px-2.5 py-1.5">
+                      🏷️ 중요도 {getPriorityLabel(mostUrgentTask.priority).label}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm text-white/95 line-clamp-2">
+                    {mostUrgentHighlight.reason}
+                  </p>
+                </button>
+              ) : (
+                <div>
+                  <p className="text-sm font-semibold">현재 긴급하게 처리할 진행 업무가 없습니다.</p>
+                  <p className="mt-1 text-xs text-white/80">
+                    업무가 생성되면 AI가 마감일과 중요도를 기준으로 자동 강조합니다.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* 진행중/완료 탭 섹션 */}
             <div className="bg-white rounded-2xl md:rounded-3xl shadow-sm overflow-hidden">
               {/* 탭 헤더 */}
@@ -588,6 +727,17 @@ function HomeContent() {
                     <option value="due_desc">마감 느린순</option>
                     <option value="priority">우선순위</option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowDueTodayOnly((prev) => !prev)}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                      showDueTodayOnly
+                        ? "bg-[#7F55B1] text-white"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    오늘 마감만
+                  </button>
                 </div>
                 {tasksLoading ? (
                   <div className="flex items-center justify-center h-40">
@@ -599,9 +749,11 @@ function HomeContent() {
                       {activeTab === "NOW" ? "📭" : "🎉"}
                     </span>
                     <p>
-                      {activeTab === "NOW"
-                        ? "진행중인 업무가 없습니다."
-                        : "완료된 업무가 없습니다."}
+                      {showDueTodayOnly
+                        ? "오늘 마감 조건에 맞는 업무가 없습니다."
+                        : activeTab === "NOW"
+                          ? "진행중인 업무가 없습니다."
+                          : "완료된 업무가 없습니다."}
                     </p>
                   </div>
                 ) : (

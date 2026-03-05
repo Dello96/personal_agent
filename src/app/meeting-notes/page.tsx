@@ -177,6 +177,11 @@ export default function MeetingNotesPage() {
               </p>
             )}
           </div>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-gray-500">
+              회의 내용을 자유롭게 작성하고 저장할 수 있습니다.
+            </p>
+          </div>
 
           <textarea
             value={noteContent}

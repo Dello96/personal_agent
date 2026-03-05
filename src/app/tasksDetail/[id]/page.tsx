@@ -2,8 +2,11 @@
 "use client";
 
 import { useRouter, useParams } from "next/navigation";
+import { useState } from "react";
 import { useAuthStore } from "@/app/stores/authStore";
-import TaskDetail from "@/app/components/features/task/TaskDetail";
+import TaskDetail, {
+  type TaskDetailTab,
+} from "@/app/components/features/task/TaskDetail";
 import AppLayout from "@/app/components/shared/AppLayout";
 
 export default function TasksDetailPage() {
@@ -11,6 +14,35 @@ export default function TasksDetailPage() {
   const router = useRouter();
   const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
   const hasHydrated = useAuthStore((state) => state._hasHydrated);
+  const [activeTaskDetailMenu, setActiveTaskDetailMenu] =
+    useState<TaskDetailTab>("overview");
+
+  const tabLabelMap: Record<string, TaskDetailTab> = {
+    개요: "overview",
+    "작업 내용": "work",
+    참여자: "members",
+    "댓글 · 논의": "discussion",
+    "첨부파일 · 링크": "resources",
+    "AI 요약 · 다음 액션": "ai",
+    "활동 로그": "activity",
+  };
+
+  const activeMenuLabelMap: Record<TaskDetailTab, string> = {
+    overview: "개요",
+    work: "작업 내용",
+    members: "참여자",
+    discussion: "댓글 · 논의",
+    resources: "첨부파일 · 링크",
+    ai: "AI 요약 · 다음 액션",
+    activity: "활동 로그",
+  };
+
+  const handleTaskDetailSidebarMenu = (menu: string) => {
+    const nextTab = tabLabelMap[menu];
+    if (nextTab) {
+      setActiveTaskDetailMenu(nextTab);
+    }
+  };
 
   // 로딩 중
   if (!hasHydrated) {
@@ -40,6 +72,8 @@ export default function TasksDetailPage() {
 
   return (
     <AppLayout
+      activeMenu={activeMenuLabelMap[activeTaskDetailMenu]}
+      onMenuClick={handleTaskDetailSidebarMenu}
       sidebarVariant="task-detail"
       headerProps={{
         showBackButton: true,
@@ -47,7 +81,11 @@ export default function TasksDetailPage() {
       }}
     >
       {/* 컨텐츠 영역 - TaskDetail 컴포넌트 */}
-      <TaskDetail taskId={params.id} />
+      <TaskDetail
+        taskId={params.id}
+        activeTab={activeTaskDetailMenu}
+        onTabChange={setActiveTaskDetailMenu}
+      />
     </AppLayout>
   );
 }

@@ -8,6 +8,60 @@ const { getOpenAIClient } = require("../lib/openaiClient");
 // 모든 라우트에 인증 미들웨어 적용
 router.use(authenticate);
 
+const normalizeSummary = (rawSummary) => ({
+  discussion:
+    typeof rawSummary?.discussion === "string" && rawSummary.discussion.trim()
+      ? rawSummary.discussion
+      : "요약 결과를 생성하지 못했습니다.",
+  decisions:
+    typeof rawSummary?.decisions === "string" && rawSummary.decisions.trim()
+      ? rawSummary.decisions
+      : "결정 사항 없음",
+  actionItems:
+    typeof rawSummary?.actionItems === "string" && rawSummary.actionItems.trim()
+      ? rawSummary.actionItems
+      : "후속 액션 없음",
+});
+
+const extractSummaryFromCompletion = (completion) => {
+  if (completion?.output_parsed) {
+    return normalizeSummary(completion.output_parsed);
+  }
+
+  if (typeof completion?.output_text === "string" && completion.output_text) {
+    try {
+      const parsed = JSON.parse(completion.output_text);
+      return normalizeSummary(parsed);
+    } catch (error) {
+      // ignore
+    }
+  }
+
+  // SDK 버전에 따라 output 배열로만 내려오는 케이스 방어
+  if (Array.isArray(completion?.output)) {
+    for (const item of completion.output) {
+      if (!Array.isArray(item?.content)) continue;
+      for (const contentItem of item.content) {
+        const textValue =
+          typeof contentItem?.text === "string"
+            ? contentItem.text
+            : typeof contentItem?.output_text === "string"
+              ? contentItem.output_text
+              : null;
+        if (!textValue) continue;
+        try {
+          const parsed = JSON.parse(textValue);
+          return normalizeSummary(parsed);
+        } catch (error) {
+          // ignore
+        }
+      }
+    }
+  }
+
+  return normalizeSummary(null);
+};
+
 // 팀 채팅방 조회 또는 생성
 router.get("/room", async (req, res) => {
   try {
@@ -368,9 +422,11 @@ router.post("/summarize", async (req, res) => {
       ],
     });
 
+    const summary = extractSummaryFromCompletion(completion);
+
     return res.json({
       ok: true,
-      summary: completion.output_parsed,
+      summary,
       messageCount: messages.length,
       model,
     });

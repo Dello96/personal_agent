@@ -417,9 +417,16 @@ const ChatPage = () => {
         type: chatType,
         limit: 80,
       });
+      const safeSummary: ChatSummaryResult = {
+        discussion:
+          result?.summary?.discussion?.trim() || "요약 결과를 생성하지 못했습니다.",
+        decisions: result?.summary?.decisions?.trim() || "결정 사항 없음",
+        actionItems: result?.summary?.actionItems?.trim() || "후속 액션 없음",
+      };
+
       setSummaryModal({
-        summary: result.summary,
-        messageCount: result.messageCount,
+        summary: safeSummary,
+        messageCount: result?.messageCount ?? 0,
       });
     } catch (summaryError: any) {
       console.error("채팅 요약 실패:", summaryError);
@@ -970,7 +977,7 @@ const ChatPage = () => {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <button
               onClick={openTeamChat}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -1003,16 +1010,6 @@ const ChatPage = () => {
                 </div>
               )}
               내게 쓰기
-            </button>
-            <button
-              type="button"
-              onClick={handleSummarizeChat}
-              disabled={
-                isSummarizing || !currentChatRoomId || messages.length === 0
-              }
-              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSummarizing ? "요약 중..." : "요약하기"}
             </button>
             <div className="text-xs text-gray-400 ml-1">개인 채팅</div>
             <div className="flex items-center gap-2 overflow-x-auto flex-1 scrollbar-hide">
@@ -1064,6 +1061,19 @@ const ChatPage = () => {
                 <span className="text-sm text-gray-400">로딩 중...</span>
               )}
             </div>
+            <button
+              type="button"
+              onClick={handleSummarizeChat}
+              disabled={
+                isSummarizing || !currentChatRoomId || messages.length === 0
+              }
+              className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-r from-[#7F55B1] to-purple-500 hover:from-[#6B479A] hover:to-purple-600 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 font-bold tracking-wide">
+                AI
+              </span>
+              {isSummarizing ? "요약 중..." : "요약하기"}
+            </button>
           </div>
         </div>
 
@@ -1421,7 +1431,7 @@ const ChatPage = () => {
                   핵심 논의
                 </p>
                 <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                  {summaryModal.summary.discussion}
+                  {summaryModal.summary?.discussion ?? "-"}
                 </p>
               </div>
 
@@ -1430,7 +1440,7 @@ const ChatPage = () => {
                   결정 사항
                 </p>
                 <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                  {summaryModal.summary.decisions}
+                  {summaryModal.summary?.decisions ?? "-"}
                 </p>
               </div>
 
@@ -1439,7 +1449,7 @@ const ChatPage = () => {
                   액션 아이템
                 </p>
                 <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                  {summaryModal.summary.actionItems}
+                  {summaryModal.summary?.actionItems ?? "-"}
                 </p>
               </div>
             </div>

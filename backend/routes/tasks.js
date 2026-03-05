@@ -4,6 +4,7 @@ const prisma = require("../db/prisma");
 const authenticate = require("../middleware/auth"); // 추가
 const { Octokit } = require("@octokit/rest");
 const crypto = require("crypto");
+const { getOpenAIApiKey, getOpenAIClient } = require("../lib/openaiClient");
 
 // 모든 라우트에 인증 미들웨어 적용
 router.use(authenticate);
@@ -177,6 +178,176 @@ const isValidStatusTransition = (
   return validTransitions[currentStatus]?.includes(newStatus) || false;
 };
 
+const getAccessibleTaskForUser = async (taskId, user) => {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    include: {
+      participants: {
+        select: {
+          userId: true,
+        },
+      },
+    },
+  });
+
+  if (!task) {
+    return { task: null, error: "업무를 찾을 수 없습니다.", status: 404 };
+  }
+
+  const isSameTeam = task.teamId === user.teamName;
+  const isAssignee = task.assigneeId === user.userId;
+  const isAssigner = task.assignerId === user.userId;
+  const isParticipant = task.participants?.some((p) => p.userId === user.userId);
+  const isTeamLeadOrAbove = ["TEAM_LEAD"].includes(user.role);
+
+  const canAccess =
+    isAssignee || isAssigner || isParticipant || (isTeamLeadOrAbove && isSameTeam);
+
+  if (!canAccess) {
+    return { task: null, error: "권한이 없습니다.", status: 403 };
+  }
+
+  return { task, error: null, status: 200 };
+};
+
+const ACTIVE_TASK_STATUSES = ["NOW", "IN_PROGRESS", "REVIEW"];
+const PRIORITY_SCORE_MAP = {
+  LOW: 1,
+  MEDIUM: 2,
+  HIGH: 3,
+  URGENT: 4,
+};
+
+const getUrgencyAnalysis = (task) => {
+  const now = Date.now();
+  const priorityWeight = PRIORITY_SCORE_MAP[task.priority] || 1;
+  const priorityScore = priorityWeight * 20;
+
+  if (!task.dueDate) {
+    return {
+      score: Math.round(priorityScore),
+      dueInHours: null,
+      isOverdue: false,
+    };
+  }
+
+  const dueAt = new Date(task.dueDate).getTime();
+  const dueInHours = (dueAt - now) / (1000 * 60 * 60);
+  const isOverdue = dueInHours < 0;
+
+  let dueScore = 0;
+  if (isOverdue) {
+    const overdueHours = Math.abs(dueInHours);
+    dueScore = 120 + Math.min(80, overdueHours * 2);
+  } else {
+    dueScore = Math.max(0, 100 - Math.min(100, dueInHours * 2));
+  }
+
+  return {
+    score: Math.round(dueScore * 0.7 + priorityScore * 0.3),
+    dueInHours: Math.round(dueInHours * 10) / 10,
+    isOverdue,
+  };
+};
+
+const buildFallbackReason = (task, analysis) => {
+  const priorityText =
+    task.priority === "URGENT"
+      ? "긴급"
+      : task.priority === "HIGH"
+        ? "높음"
+        : task.priority === "MEDIUM"
+          ? "보통"
+          : "낮음";
+
+  if (!task.dueDate) {
+    return `마감일은 없지만 중요도가 ${priorityText}로 설정되어 우선 확인이 필요합니다.`;
+  }
+
+  if (analysis.isOverdue) {
+    return `마감일이 지났고 중요도가 ${priorityText}라 즉시 대응이 필요합니다.`;
+  }
+
+  if (typeof analysis.dueInHours === "number") {
+    if (analysis.dueInHours <= 24) {
+      return `마감이 24시간 이내이며 중요도가 ${priorityText}라 최우선 처리 대상입니다.`;
+    }
+    return `마감까지 약 ${Math.round(analysis.dueInHours)}시간 남았고 중요도가 ${priorityText}라 우선 순위가 높습니다.`;
+  }
+
+  return `마감일과 중요도를 기준으로 가장 우선도가 높은 업무입니다.`;
+};
+
+const generateUrgentTaskReason = async (task, analysis) => {
+  const fallbackReason = buildFallbackReason(task, analysis);
+
+  if (!getOpenAIApiKey()) {
+    return {
+      reason: fallbackReason,
+      generatedByAI: false,
+    };
+  }
+
+  try {
+    const client = getOpenAIClient();
+    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+
+    const completion = await client.responses.create({
+      model,
+      temperature: 0.2,
+      max_output_tokens: 120,
+      input: [
+        {
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text: "너는 업무 우선순위 판단 이유를 한 줄로 정리하는 한국어 비서다. 50자 내외로 자연스럽게 작성해라.",
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text:
+                `업무 제목: ${task.title}\n` +
+                `중요도: ${task.priority}\n` +
+                `마감일: ${task.dueDate ? new Date(task.dueDate).toISOString() : "없음"}\n` +
+                `마감까지 시간(시간): ${analysis.dueInHours ?? "없음"}\n` +
+                `연체 여부: ${analysis.isOverdue ? "예" : "아니오"}`,
+            },
+          ],
+        },
+      ],
+    });
+
+    const reason =
+      typeof completion?.output_text === "string"
+        ? completion.output_text.trim()
+        : "";
+
+    if (!reason) {
+      return {
+        reason: fallbackReason,
+        generatedByAI: false,
+      };
+    }
+
+    return {
+      reason,
+      generatedByAI: true,
+    };
+  } catch (error) {
+    console.error("긴급 업무 사유 생성 실패:", error?.message || error);
+    return {
+      reason: fallbackReason,
+      generatedByAI: false,
+    };
+  }
+};
+
 // 업무 목록 조회
 router.get("/", async (req, res) => {
   try {
@@ -232,6 +403,99 @@ router.get("/", async (req, res) => {
   }
 });
 
+// 가장 긴급한 업무 조회 (마감 임박 + 중요도 기준)
+router.get("/most-urgent", async (req, res) => {
+  try {
+    const { userId, role, teamName } = req.user;
+
+    const where =
+      role === "TEAM_LEAD"
+        ? { teamId: teamName }
+        : {
+            OR: [
+              { assigneeId: userId },
+              { participants: { some: { userId: userId } } },
+            ],
+          };
+
+    const tasks = await prisma.task.findMany({
+      where,
+      include: {
+        assignee: { select: { id: true, name: true, email: true } },
+        assigner: { select: { id: true, name: true, email: true } },
+        participants: {
+          select: {
+            id: true,
+            userId: true,
+            role: true,
+            note: true,
+            updatedAt: true,
+            startedAt: true,
+            user: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+    });
+
+    const candidates = tasks.filter((task) =>
+      ACTIVE_TASK_STATUSES.includes(task.status)
+    );
+
+    if (candidates.length === 0) {
+      return res.json({
+        ok: true,
+        task: null,
+        highlight: null,
+      });
+    }
+
+    const ranked = candidates
+      .map((task) => {
+        const analysis = getUrgencyAnalysis(task);
+        return { task, analysis };
+      })
+      .sort((a, b) => {
+        if (b.analysis.score !== a.analysis.score) {
+          return b.analysis.score - a.analysis.score;
+        }
+
+        if (a.task.dueDate && b.task.dueDate) {
+          return (
+            new Date(a.task.dueDate).getTime() - new Date(b.task.dueDate).getTime()
+          );
+        }
+        if (a.task.dueDate && !b.task.dueDate) return -1;
+        if (!a.task.dueDate && b.task.dueDate) return 1;
+
+        const aPriority = PRIORITY_SCORE_MAP[a.task.priority] || 1;
+        const bPriority = PRIORITY_SCORE_MAP[b.task.priority] || 1;
+        if (bPriority !== aPriority) return bPriority - aPriority;
+
+        return (
+          new Date(a.task.createdAt).getTime() - new Date(b.task.createdAt).getTime()
+        );
+      });
+
+    const top = ranked[0];
+    const reasonResult = await generateUrgentTaskReason(top.task, top.analysis);
+
+    return res.json({
+      ok: true,
+      task: top.task,
+      highlight: {
+        score: top.analysis.score,
+        dueInHours: top.analysis.dueInHours,
+        isOverdue: top.analysis.isOverdue,
+        reason: reasonResult.reason,
+        generatedByAI: reasonResult.generatedByAI,
+      },
+    });
+  } catch (error) {
+    console.error("가장 긴급한 업무 조회 오류:", error);
+    return res.status(500).json({ error: "가장 긴급한 업무 조회에 실패했습니다." });
+  }
+});
+
 // 단일 업무 조회
 router.get("/:id", async (req, res) => {
   try {
@@ -272,6 +536,157 @@ router.get("/:id", async (req, res) => {
   } catch (error) {
     console.error("업무 조회 오류:", error);
     res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+// 댓글/논의 조회 (로그인한 사용자 기준)
+router.get("/:id/discussion", async (req, res) => {
+  try {
+    const { id: taskId } = req.params;
+    const { userId } = req.user;
+
+    const accessibleTask = await getAccessibleTaskForUser(taskId, req.user);
+    if (accessibleTask.error) {
+      return res
+        .status(accessibleTask.status)
+        .json({ error: accessibleTask.error });
+    }
+
+    const note = await prisma.taskDiscussionNote.findUnique({
+      where: {
+        taskId_authorId: {
+          taskId,
+          authorId: userId,
+        },
+      },
+      select: {
+        id: true,
+        taskId: true,
+        authorId: true,
+        content: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    const notes = await prisma.taskDiscussionNote.findMany({
+      where: { taskId },
+      select: {
+        id: true,
+        taskId: true,
+        authorId: true,
+        content: true,
+        createdAt: true,
+        updatedAt: true,
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            picture: true,
+          },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    return res.json({ note: note || null, notes });
+  } catch (error) {
+    console.error("댓글/논의 조회 오류:", error);
+    return res.status(500).json({ error: "댓글/논의 조회에 실패했습니다." });
+  }
+});
+
+// 댓글/논의 저장 (로그인한 사용자 기준)
+router.put("/:id/discussion", async (req, res) => {
+  try {
+    const { id: taskId } = req.params;
+    const { userId } = req.user;
+    const { content } = req.body || {};
+
+    if (typeof content !== "string") {
+      return res.status(400).json({ error: "content는 문자열이어야 합니다." });
+    }
+
+    const accessibleTask = await getAccessibleTaskForUser(taskId, req.user);
+    if (accessibleTask.error) {
+      return res
+        .status(accessibleTask.status)
+        .json({ error: accessibleTask.error });
+    }
+
+    const saved = await prisma.taskDiscussionNote.upsert({
+      where: {
+        taskId_authorId: {
+          taskId,
+          authorId: userId,
+        },
+      },
+      update: {
+        content,
+      },
+      create: {
+        taskId,
+        authorId: userId,
+        content,
+      },
+      select: {
+        id: true,
+        taskId: true,
+        authorId: true,
+        content: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return res.json({ note: saved });
+  } catch (error) {
+    console.error("댓글/논의 저장 오류:", error);
+    return res.status(500).json({ error: "댓글/논의 저장에 실패했습니다." });
+  }
+});
+
+// 댓글/논의 삭제 (로그인한 사용자 기준)
+router.delete("/:id/discussion", async (req, res) => {
+  try {
+    const { id: taskId } = req.params;
+    const { userId } = req.user;
+
+    const accessibleTask = await getAccessibleTaskForUser(taskId, req.user);
+    if (accessibleTask.error) {
+      return res
+        .status(accessibleTask.status)
+        .json({ error: accessibleTask.error });
+    }
+
+    const existing = await prisma.taskDiscussionNote.findUnique({
+      where: {
+        taskId_authorId: {
+          taskId,
+          authorId: userId,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "삭제할 댓글/논의가 없습니다." });
+    }
+
+    await prisma.taskDiscussionNote.delete({
+      where: {
+        taskId_authorId: {
+          taskId,
+          authorId: userId,
+        },
+      },
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("댓글/논의 삭제 오류:", error);
+    return res.status(500).json({ error: "댓글/논의 삭제에 실패했습니다." });
   }
 });
 
