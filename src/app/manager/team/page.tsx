@@ -13,12 +13,14 @@ import {
   renameTeam,
   updateTeamMemberRole,
 } from "@/lib/api/team";
+import { removeTeamMember, withdrawFromCurrentTeam } from "@/lib/api/users";
 import { getRoleLabel, getRoleRank } from "@/lib/utils/roleUtils";
 import type { TeamMember } from "@/lib/api/users";
 
 export default function TeamManagementPage() {
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
+  const logout = useAuthStore((state) => state.logout);
   const router = useRouter();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
@@ -34,10 +36,16 @@ export default function TeamManagementPage() {
   const [isRenaming, setIsRenaming] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
+  const [withdrawingMemberId, setWithdrawingMemberId] = useState<string | null>(
+    null
+  );
+  const [isSelfWithdrawing, setIsSelfWithdrawing] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [onlineMap, setOnlineMap] = useState<Record<string, boolean>>({});
 
   const isTeamLeadOrAbove = user?.role === "TEAM_LEAD";
+  const isManagerOrAbove =
+    getRoleRank(user?.role || "") >= getRoleRank("ASSISTANT_MANAGER");
 
   const openPermissionModal = () => {
     setShowPermissionModal(true);
@@ -168,6 +176,41 @@ export default function TeamManagementPage() {
     }
   };
 
+  const handleWithdrawSelf = async () => {
+    if (!confirm("정말 팀에서 탈퇴하시겠습니까?")) return;
+    try {
+      setIsSelfWithdrawing(true);
+      await withdrawFromCurrentTeam();
+      logout();
+      alert("회원 탈퇴가 완료되었습니다.");
+      router.push("/");
+    } catch (err: unknown) {
+      const message = (err as { message?: string }).message;
+      setError(message || "팀 탈퇴에 실패했습니다.");
+    } finally {
+      setIsSelfWithdrawing(false);
+    }
+  };
+
+  const handleRemoveMember = async (member: TeamMember) => {
+    if (!isManagerOrAbove) {
+      openPermissionModal();
+      return;
+    }
+    if (!confirm(`${member.name}님을 팀에서 탈퇴시키겠습니까?`)) return;
+    try {
+      setWithdrawingMemberId(member.id);
+      await removeTeamMember(member.id);
+      setMembers((prev) => prev.filter((m) => m.id !== member.id));
+      setSuccessMessage(`${member.name}님을 팀에서 탈퇴시켰습니다.`);
+    } catch (err: unknown) {
+      const message = (err as { message?: string }).message;
+      setError(message || "팀원 탈퇴 처리에 실패했습니다.");
+    } finally {
+      setWithdrawingMemberId(null);
+    }
+  };
+
   const roleOptions = [
     { value: "INTERN", label: getRoleLabel("INTERN") },
     { value: "STAFF", label: getRoleLabel("STAFF") },
@@ -267,6 +310,16 @@ export default function TeamManagementPage() {
               {isRenaming ? "변경 중..." : "팀 변경"}
             </button>
           </div>
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={handleWithdrawSelf}
+              disabled={isSelfWithdrawing}
+              className="px-4 py-2 border border-red-200 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              {isSelfWithdrawing ? "탈퇴 처리 중..." : "회원 탈퇴"}
+            </button>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl p-6 shadow-sm">
@@ -317,6 +370,18 @@ export default function TeamManagementPage() {
                     {roleUpdatingId === member.id && (
                       <span className="text-xs text-gray-400">변경 중...</span>
                     )}
+                    {isManagerOrAbove && member.id !== user.id && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMember(member)}
+                        disabled={withdrawingMemberId === member.id}
+                        className="px-3 py-2 border border-red-200 bg-red-50 text-red-700 rounded-lg text-sm hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {withdrawingMemberId === member.id
+                          ? "처리 중..."
+                          : "회원탈퇴"}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -341,7 +406,7 @@ export default function TeamManagementPage() {
               권한이 없습니다
             </h3>
             <p className="text-sm text-gray-600 mb-6">
-              팀장 이상만 변경 가능합니다.
+              팀장 또는 대리 이상만 변경 가능합니다.
             </p>
             <button
               type="button"

@@ -70,6 +70,7 @@ export interface User {
   name: string;
   picture: string | null;
   role: string;
+  roleSetupCompleted?: boolean;
   teamName: string | null;
   createdAt: string;
   updatedAt: string;
@@ -95,6 +96,15 @@ export const updateCurrentUser = async (payload: {
   });
 };
 
+export const setupMyRole = async (
+  role: "INTERN" | "STAFF" | "ASSOCIATE" | "ASSISTANT_MANAGER" | "TEAM_LEAD"
+): Promise<User> => {
+  return apiRequest("/api/users/me/role", {
+    method: "PUT",
+    body: JSON.stringify({ role }),
+  });
+};
+
 // users.ts에 추가
 export interface TeamMember {
   id: string;
@@ -114,6 +124,27 @@ export const getTeamMembersOnline = async (): Promise<{
   onlineMap: Record<string, boolean>;
 }> => {
   return apiRequest("/api/users/team-members/online");
+};
+
+export const withdrawFromCurrentTeam = async (): Promise<{
+  ok: boolean;
+  message: string;
+}> => {
+  return apiRequest("/api/users/team/withdraw", {
+    method: "POST",
+  });
+};
+
+export const removeTeamMember = async (
+  memberId: string
+): Promise<{
+  ok: boolean;
+  message: string;
+  memberId: string;
+}> => {
+  return apiRequest(`/api/users/team-members/${memberId}/withdraw`, {
+    method: "POST",
+  });
 };
 
 // 프로필 이미지 업로드

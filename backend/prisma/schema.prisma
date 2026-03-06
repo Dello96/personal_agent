@@ -13,6 +13,7 @@ model User {
   name      String
   picture   String?
   role      Role     @default(INTERN)
+  roleSetupCompleted Boolean @default(true)
   teamName  String?
   team      Team?    @relation("TeamMembers", fields: [teamName], references: [teamName])
   createdAt DateTime @default(now())

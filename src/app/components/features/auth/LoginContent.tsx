@@ -71,6 +71,7 @@ export default function LoginContent({
           name: result.user.name,
           picture: result.user.picture ?? null,
           role: result.user.role,
+          roleSetupCompleted: result.user.roleSetupCompleted ?? true,
           teamName: result.user.teamName ?? null,
         })
       );
@@ -90,9 +91,7 @@ export default function LoginContent({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center p-3 sm:p-4">
-      <div
-        className={`w-full ${showBackButton ? "max-w-lg" : "max-w-md"}`}
-      >
+      <div className={`w-full ${showBackButton ? "max-w-lg" : "max-w-md"}`}>
         {/* 로그인 폼 - TaskFlow 포함 흰 배경 카드 */}
         <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 md:p-10 space-y-4 md:space-y-6 relative">
           {showBackButton && onBack && (
@@ -107,7 +106,7 @@ export default function LoginContent({
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-[#7F55B1] flex items-center justify-center gap-2">
               <span className="text-4xl">📋</span>
-              TaskFlow
+              Work Together
             </h1>
             <p className="text-gray-600 mt-2">이메일 로그인</p>
           </div>

@@ -87,6 +87,13 @@ function HomeContent() {
     }
   }, [searchParams]);
 
+  useEffect(() => {
+    const openEmailLogin = searchParams.get("openEmailLogin");
+    if (openEmailLogin === "1") {
+      setShowEmailLogin(true);
+    }
+  }, [searchParams]);
+
   const goToTeamJoin = () => {
     router.push("/team/join");
   };
@@ -300,6 +307,7 @@ function HomeContent() {
           login(
             {
               ...user,
+              roleSetupCompleted: user.roleSetupCompleted ?? true,
               role: user.role as
                 | "INTERN"
                 | "STAFF"
@@ -309,6 +317,10 @@ function HomeContent() {
             },
             token
           );
+          if (user.roleSetupCompleted === false) {
+            router.replace("/auth/role-setup");
+            return;
+          }
         } else {
           login(
             {
@@ -317,6 +329,7 @@ function HomeContent() {
               name: "User",
               picture: "picture",
               role: "INTERN",
+              roleSetupCompleted: true,
               teamName: "TEAMNAME",
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -836,7 +849,6 @@ function HomeContent() {
                 {user?.teamName === "디자인팀" && <FigmaActivityWidget />}
               </div>
 
-              <Weather />
               <div className="hidden lg:block" />
               <div className="hidden lg:block" />
             </div>
@@ -860,39 +872,7 @@ function HomeContent() {
                 <p className="text-gray-400 text-sm">{user.email}</p>
               </div>
             </div>
-            {/* 업무 통계 카드 */}
-            <div className="bg-white rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm">
-              <h3 className="font-semibold text-gray-800 mb-4">업무 현황</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <span>🔄</span>
-                    <span className="text-sm text-gray-600">진행중</span>
-                  </div>
-                  <span className="font-bold text-yellow-600">
-                    {nowTasks.length}건
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <span>📝</span>
-                    <span className="text-sm text-gray-600">리뷰중</span>
-                  </div>
-                  <span className="font-bold text-blue-600">
-                    {reviewTasks.length}건
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <span>✅</span>
-                    <span className="text-sm text-gray-600">종료</span>
-                  </div>
-                  <span className="font-bold text-green-600">
-                    {endingTasks.length}건
-                  </span>
-                </div>
-              </div>
-            </div>
+            <Weather />
 
             {/* 팀원 목록 (Team) */}
             <div className="bg-white rounded-3xl p-6 shadow-sm">
