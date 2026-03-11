@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useMemo } from "react";
+import { Suspense, useEffect, useState, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppLayout from "@/app/components/shared/AppLayout";
 import { useAuthStore } from "@/app/stores/authStore";
@@ -26,7 +26,7 @@ import {
 } from "@/lib/api/notifications";
 import { getLinkPreview } from "@/lib/api/links";
 
-const ChatPage = () => {
+const ChatPageContent = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const user = useAuthStore((state) => state.user);
@@ -1460,4 +1460,16 @@ const ChatPage = () => {
   );
 };
 
-export default ChatPage;
+export default function ChatPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center">
+          <div className="text-[#7F55B1] text-lg">채팅 화면 로딩 중...</div>
+        </div>
+      }
+    >
+      <ChatPageContent />
+    </Suspense>
+  );
+}
