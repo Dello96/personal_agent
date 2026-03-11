@@ -7,17 +7,22 @@ import {
   getCurrentUser,
   updateCurrentUser,
   uploadProfileImage,
+  withdrawFromCurrentTeam,
 } from "@/lib/api/users";
+import { useRouter } from "next/navigation";
 
 export default function MyPage() {
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
+  const logout = useAuthStore((state) => state.logout);
+  const router = useRouter();
 
   const [name, setName] = useState("");
   const [pictureUrl, setPictureUrl] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -124,6 +129,22 @@ export default function MyPage() {
     setFile(null);
   };
 
+  const handleWithdrawTeam = async () => {
+    if (!confirm("정말 팀에서 탈퇴하시겠습니까?")) return;
+    try {
+      setWithdrawing(true);
+      await withdrawFromCurrentTeam();
+      logout();
+      alert("회원 탈퇴가 완료되었습니다.");
+      router.push("/");
+    } catch (err: unknown) {
+      const errorMessage = (err as { message?: string }).message;
+      setError(errorMessage || "팀 탈퇴에 실패했습니다.");
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
   return (
     <AppLayout
       activeMenu=""
@@ -212,6 +233,20 @@ export default function MyPage() {
               className="px-6 py-2 bg-[#7F55B1] text-white rounded-lg hover:bg-[#6B479A] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? "저장 중..." : "저장"}
+            </button>
+          </div>
+          <div className="mt-6 border-t border-gray-100 pt-6">
+            <h3 className="text-sm font-semibold text-gray-800 mb-2">팀 탈퇴</h3>
+            <p className="text-xs text-gray-500 mb-3">
+              팀에서 탈퇴하면 팀 기반 메뉴 접근이 제한됩니다.
+            </p>
+            <button
+              type="button"
+              onClick={handleWithdrawTeam}
+              disabled={withdrawing || !user?.teamName}
+              className="px-4 py-2 border border-red-200 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              {withdrawing ? "탈퇴 처리 중..." : "회원 탈퇴"}
             </button>
           </div>
         </div>

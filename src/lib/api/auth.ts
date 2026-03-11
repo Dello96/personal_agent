@@ -21,6 +21,7 @@ export interface AuthResponse {
     email: string;
     name: string;
     role: string;
+    roleSetupCompleted?: boolean;
     picture?: string;
     teamName?: string;
   };

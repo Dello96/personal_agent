@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { register, checkEmail } from "@/lib/api/auth";
 import { useAuthStore } from "@/app/stores/authStore";
 import { joinTeam } from "@/lib/api/team";
@@ -207,7 +206,7 @@ export default function RegisterPage() {
         <div className="text-center mb-6 md:mb-8">
           <h1 className="text-2xl md:text-3xl font-bold text-[#7F55B1] flex items-center justify-center gap-2">
             <span className="text-3xl md:text-4xl">📋</span>
-            TaskFlow
+            Work Together
           </h1>
           <p className="text-gray-600 mt-2 text-sm md:text-base">회원가입</p>
         </div>
@@ -388,12 +387,15 @@ export default function RegisterPage() {
           <div className="text-center pt-4 border-t border-gray-100">
             <p className="text-gray-600">
               이미 계정이 있으신가요?{" "}
-              <Link
-                href="/auth/login"
+              <button
+                type="button"
+                onClick={() => {
+                  router.push("/?openEmailLogin=1");
+                }}
                 className="text-[#7F55B1] font-medium hover:underline"
               >
                 로그인
-              </Link>
+              </button>
             </p>
           </div>
         </form>

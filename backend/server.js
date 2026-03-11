@@ -168,6 +168,7 @@ app.get("/login/redirect", async (req, res) => {
           name: googleUser.name,
           picture: googleUser.picture,
           role: "INTERN", // 기본값
+          roleSetupCompleted: false, // 소셜 가입자는 로그인 후 직급 선택
           teamName: null, // 처음에는 팀 없음
         },
       });
@@ -196,6 +197,7 @@ app.get("/login/redirect", async (req, res) => {
       name: user.name,
       picture: user.picture,
       role: user.role,
+      roleSetupCompleted: user.roleSetupCompleted,
       teamName: user.teamName || null,
     };
 
@@ -283,6 +285,7 @@ app.get("/auth/kakao/callback", async (req, res) => {
           name: name || "Kakao User",
           picture: picture,
           role: "INTERN",
+          roleSetupCompleted: false, // 소셜 가입자는 로그인 후 직급 선택
           teamName: null,
         },
       });
@@ -302,6 +305,7 @@ app.get("/auth/kakao/callback", async (req, res) => {
       name: user.name,
       picture: user.picture,
       role: user.role,
+      roleSetupCompleted: user.roleSetupCompleted,
       teamName: user.teamName || null,
     };
 
