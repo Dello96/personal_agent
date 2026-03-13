@@ -1,6 +1,5 @@
 // tasks.ts - 업무 API 함수
 import { apiRequest } from "./users";
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 export interface TaskParticipant {
   id: string;

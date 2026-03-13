@@ -495,9 +495,12 @@ function HomeContent() {
               {/* 소셜 로그인 버튼 */}
               <div className="space-y-3">
                 <button
-                  onClick={() =>
-                    (window.location.href = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}/login`)
-                  }
+                  onClick={() => {
+                    const apiBase = (
+                      process.env.NEXT_PUBLIC_API_URL || ""
+                    ).replace(/\/$/, "");
+                    window.location.href = apiBase ? `${apiBase}/login` : "/login";
+                  }}
                   className="w-full py-3 bg-white border border-gray-200 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
                 >
                   <Image
@@ -508,9 +511,14 @@ function HomeContent() {
                   />
                 </button>
                 <button
-                  onClick={() =>
-                    (window.location.href = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}/auth/kakao`)
-                  }
+                  onClick={() => {
+                    const apiBase = (
+                      process.env.NEXT_PUBLIC_API_URL || ""
+                    ).replace(/\/$/, "");
+                    window.location.href = apiBase
+                      ? `${apiBase}/auth/kakao`
+                      : "/auth/kakao";
+                  }}
                   className="w-full py-3 bg-[#FEE500] text-[#3C1E1E] rounded-xl font-medium hover:bg-[#F5DC00] transition-all flex items-center justify-center gap-2"
                 >
                   <Image

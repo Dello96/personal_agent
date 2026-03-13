@@ -1,13 +1,10 @@
 // users.ts - 사용자 API 함수
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 const getToken = () => {
   if (typeof window === "undefined") return null;
   const authStore = require("@/app/stores/authStore").useAuthStore.getState();
-
-  console.log("AuthStore state:", authStore); // 전체 상태 확인
-  console.log("Token from store:", authStore.token); // 토큰 확인
   return authStore.token;
 };
 
