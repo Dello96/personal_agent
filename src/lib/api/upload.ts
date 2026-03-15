@@ -1,7 +1,7 @@
 // upload.ts - 이미지 업로드 API 함수
 import { apiRequest } from "./users";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 /**
  * 단일 이미지 업로드

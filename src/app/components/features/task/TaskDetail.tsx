@@ -177,8 +177,32 @@ export default function TaskDetail({
     // 팀장급 이상은 NOW 상태에서 ON 버튼을 눌러도 상태 변경 안 함
     const isTeamLeadOrAbove = ["TEAM_LEAD"].includes(user.role || "");
     if (isTeamLeadOrAbove && task.status === "NOW") {
-      // 상태 변경 없이 그냥 반환
+      alert("팀장급 이상은 ON 버튼으로 상태를 변경하지 않습니다.");
       return;
+    }
+
+    const myParticipant = task.participants?.find((p) => p.userId === user.id);
+    if (!myParticipant) {
+      alert("참여자로 지정된 업무에서만 ON 버튼을 사용할 수 있습니다.");
+      return;
+    }
+
+    if (myParticipant.startedAt) {
+      alert("이미 시작한 업무입니다.");
+      return;
+    }
+
+    try {
+      setIsUpdatingStatus(true);
+      await updateParticipantStartStatus(task.id, myParticipant.id, true);
+      const refreshedTask = await getTask(taskId);
+      setTask(refreshedTask);
+      alert("업무를 시작했습니다.");
+    } catch (error: any) {
+      console.error("ON 버튼 처리 실패:", error);
+      alert(error?.message || "업무 시작에 실패했습니다.");
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 

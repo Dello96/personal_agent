@@ -7,7 +7,7 @@ import Link from "next/link";
 import { login } from "@/lib/api/auth";
 import { useAuthStore } from "@/app/stores/authStore";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 interface LoginContentProps {
   /** 메인 페이지 이메일 로그인 시 true. 뒤로가기 버튼 표시, 카드 가로 폭 확대 */
@@ -32,11 +32,11 @@ export default function LoginContent({
 
   // 소셜 로그인 핸들러
   const handleGoogleLogin = () => {
-    window.location.href = `${API_URL}/login`;
+    window.location.href = API_URL ? `${API_URL}/login` : "/login";
   };
 
   const handleKakaoLogin = () => {
-    window.location.href = `${API_URL}/auth/kakao`;
+    window.location.href = API_URL ? `${API_URL}/auth/kakao` : "/auth/kakao";
   };
 
   // 입력값 변경 핸들러

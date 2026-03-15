@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import AppLayout from "@/app/components/shared/AppLayout";
 import { joinTeam } from "@/lib/api/team";
@@ -9,7 +9,7 @@ import TeamJoin from "@/app/components/features/team/TeamJoin";
 
 const PENDING_TEAM_KEY = "pendingInviteTeam";
 
-export default function TeamJoinPage() {
+function TeamJoinPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
@@ -68,5 +68,13 @@ export default function TeamJoinPage() {
         </p>
       </div>
     </AppLayout>
+  );
+}
+
+export default function TeamJoinPage() {
+  return (
+    <Suspense fallback={<TeamJoin />}>
+      <TeamJoinPageContent />
+    </Suspense>
   );
 }

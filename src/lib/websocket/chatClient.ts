@@ -1,6 +1,19 @@
 // WebSocket 클라이언트 유틸리티
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
+const WS_URL =
+  (process.env.NEXT_PUBLIC_WS_URL || "").replace(/\/$/, "") ||
+  (process.env.NEXT_PUBLIC_API_URL || "")
+    .replace(/\/$/, "")
+    .replace(/^http:/, "ws:")
+    .replace(/^https:/, "wss:");
+
+const getWebSocketBaseUrl = () => {
+  if (WS_URL) return WS_URL;
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
+  }
+  return "";
+};
 
 export type ChatMessageType = "join" | "leave" | "send";
 export type ChatRoomType = "TEAM" | "DIRECT";
@@ -74,7 +87,8 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
     }
 
     this.token = token;
-    const url = `${WS_URL}/ws/chat?token=${encodeURIComponent(token)}`;
+    const wsBase = getWebSocketBaseUrl();
+    const url = `${wsBase}/ws/chat?token=${encodeURIComponent(token)}`;
     console.log("🔌 WebSocket 연결 시도:", url.replace(token, "***"));
 
     try {

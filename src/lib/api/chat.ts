@@ -98,9 +98,10 @@ export const uploadChatFiles = async (files: File[]) => {
       : require("@/app/stores/authStore").useAuthStore.getState().token;
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
+  const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}/api/upload/chat`,
+    `${apiBase}/api/upload/chat`,
     {
       method: "POST",
       headers: {

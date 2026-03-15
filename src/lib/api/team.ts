@@ -2,8 +2,6 @@
 import { apiRequest, getTeamMembers, getTeamMembersOnline } from "./users";
 import type { TeamMember } from "./users";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-
 export interface Team {
   id: string;
   createdAt: string;
