@@ -46,10 +46,10 @@ export interface ChatWebSocketClient {
     }> | null,
     clientMessageId?: string | null
   ) => void;
-  onMessage: (callback: (message: any) => void) => void;
-  onError: (callback: (error: Error) => void) => void;
-  onConnect: (callback: () => void) => void;
-  onDisconnect: (callback: () => void) => void;
+  onMessage: (callback: (message: any) => void) => () => void;
+  onError: (callback: (error: Error) => void) => () => void;
+  onConnect: (callback: () => void) => () => void;
+  onDisconnect: (callback: () => void) => () => void;
   isConnected: () => boolean;
 }
 
@@ -66,6 +66,16 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
   private reconnectTimer: NodeJS.Timeout | null = null;
 
   connect(token: string) {
+    // 기존 연결이 다른 계정 토큰이면 반드시 재연결
+    if (
+      this.ws?.readyState === WebSocket.OPEN &&
+      this.token &&
+      this.token !== token
+    ) {
+      console.log("계정 변경 감지: 기존 WebSocket 재연결");
+      this.disconnect();
+    }
+
     // 이미 연결되어 있거나 연결 중이면 스킵
     if (this.ws?.readyState === WebSocket.OPEN) {
       console.log("WebSocket이 이미 연결되어 있습니다.");
@@ -256,18 +266,38 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
 
   onMessage(callback: (message: any) => void) {
     this.messageCallbacks.push(callback);
+    return () => {
+      this.messageCallbacks = this.messageCallbacks.filter(
+        (registered) => registered !== callback
+      );
+    };
   }
 
   onError(callback: (error: Error) => void) {
     this.errorCallbacks.push(callback);
+    return () => {
+      this.errorCallbacks = this.errorCallbacks.filter(
+        (registered) => registered !== callback
+      );
+    };
   }
 
   onConnect(callback: () => void) {
     this.connectCallbacks.push(callback);
+    return () => {
+      this.connectCallbacks = this.connectCallbacks.filter(
+        (registered) => registered !== callback
+      );
+    };
   }
 
   onDisconnect(callback: () => void) {
     this.disconnectCallbacks.push(callback);
+    return () => {
+      this.disconnectCallbacks = this.disconnectCallbacks.filter(
+        (registered) => registered !== callback
+      );
+    };
   }
 
   isConnected(): boolean {

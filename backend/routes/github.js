@@ -496,29 +496,60 @@ router.get("/activities", async (req, res) => {
     const { teamName } = req.user;
     const { limit = 20, type } = req.query;
 
-    const repository = await prisma.gitHubRepository.findUnique({
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const normalizedType = type ? String(type) : undefined;
+
+    // 1) 팀 레포지토리 활동 조회
+    const teamRepository = await prisma.gitHubRepository.findUnique({
       where: { teamId: teamName },
+      select: { id: true },
     });
 
-    if (!repository) {
-      return res.status(404).json({ error: "연결된 레포지토리가 없습니다." });
-    }
-
-    const where = {
-      repositoryId: repository.id,
+    const teamActivityWhere = {
+      ...(teamRepository ? { repositoryId: teamRepository.id } : {}),
+      ...(normalizedType ? { type: normalizedType } : {}),
     };
 
-    if (type) {
-      where.type = type;
-    }
+    const teamActivities = teamRepository
+      ? await prisma.gitHubActivity.findMany({
+          where: teamActivityWhere,
+          orderBy: { createdAt: "desc" },
+          take: safeLimit,
+        })
+      : [];
 
-    const activities = await prisma.gitHubActivity.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: parseInt(limit),
+    // 2) 업무별 레포지토리 활동 조회 (같은 팀 업무들)
+    const taskRepositories = await prisma.taskGitHubRepository.findMany({
+      where: {
+        task: {
+          teamId: teamName,
+        },
+      },
+      select: { id: true },
     });
 
-    res.json(activities);
+    const taskRepositoryIds = taskRepositories.map((repo) => repo.id);
+
+    const taskActivities =
+      taskRepositoryIds.length > 0
+        ? await prisma.taskGitHubActivity.findMany({
+            where: {
+              repositoryId: { in: taskRepositoryIds },
+              ...(normalizedType ? { type: normalizedType } : {}),
+            },
+            orderBy: { createdAt: "desc" },
+            take: safeLimit,
+          })
+        : [];
+
+    // 3) 동일 스키마로 병합 후 최신순 정렬
+    const mergedActivities = [...teamActivities, ...taskActivities]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, safeLimit);
+
+    // 기존 동작 호환: 활동이 전혀 없으면 빈 배열 반환
+    // (위젯에서 "최근 활동이 없습니다."로 노출)
+    res.json(mergedActivities);
   } catch (error) {
     console.error("활동 조회 오류:", error);
     console.error("에러 상세:", {

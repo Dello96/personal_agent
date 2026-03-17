@@ -96,6 +96,17 @@ const ChatPageContent = () => {
     (state) => state.clearNewMessage
   );
 
+  const ensureWsConnection = () => {
+    if (!token) {
+      alert("로그인이 필요합니다.");
+      return false;
+    }
+    if (!wsClientRef.current.isConnected()) {
+      wsClientRef.current.connect(token);
+    }
+    return true;
+  };
+
   // ref 업데이트
   useEffect(() => {
     currentChatRoomIdRef.current = currentChatRoomId;
@@ -495,8 +506,7 @@ const ChatPageContent = () => {
   }, [user, teamMembers]);
 
   const openTeamChat = async () => {
-    if (!isConnected) {
-      alert("WebSocket 연결이 필요합니다. 잠시만 기다려주세요.");
+    if (!ensureWsConnection()) {
       return;
     }
 
@@ -522,8 +532,7 @@ const ChatPageContent = () => {
   };
 
   const openSelfChat = async () => {
-    if (!isConnected || !user) {
-      alert("WebSocket 연결이 필요합니다. 잠시만 기다려주세요.");
+    if (!user || !ensureWsConnection()) {
       return;
     }
 
@@ -548,8 +557,7 @@ const ChatPageContent = () => {
 
   // 참여자 클릭 핸들러
   const handleMemberClick = async (memberId: string, memberName: string) => {
-    if (!isConnected) {
-      alert("WebSocket 연결이 필요합니다. 잠시만 기다려주세요.");
+    if (!ensureWsConnection()) {
       return;
     }
 
@@ -590,20 +598,20 @@ const ChatPageContent = () => {
     // 채팅 페이지에서는 채팅방 참여/나가기만 처리
 
     // 연결 성공 핸들러
-    wsClient.onConnect(() => {
+    const unsubscribeConnect = wsClient.onConnect(() => {
       console.log("✅ WebSocket 연결됨");
       setIsConnected(true);
       setError(null);
     });
 
     // 연결 종료 핸들러
-    wsClient.onDisconnect(() => {
+    const unsubscribeDisconnect = wsClient.onDisconnect(() => {
       console.log("🔌 WebSocket 연결 종료");
       setIsConnected(false);
     });
 
     // 에러 핸들러
-    wsClient.onError((error) => {
+    const unsubscribeError = wsClient.onError((error) => {
       console.error("❌ WebSocket 에러:", error);
       setError(
         error.message ||
@@ -613,7 +621,7 @@ const ChatPageContent = () => {
     });
 
     // 메시지 수신 핸들러
-    wsClient.onMessage((message) => {
+    const unsubscribeMessage = wsClient.onMessage((message) => {
       console.log("📨 WebSocket 메시지:", message.type, message);
       if (message.type === "message" && message.data) {
         // 새 메시지 수신
@@ -714,7 +722,12 @@ const ChatPageContent = () => {
     }
 
     // 컴포넌트 언마운트 시 연결 종료하지 않음 (전역 연결 유지)
-    return () => {};
+    return () => {
+      unsubscribeConnect();
+      unsubscribeDisconnect();
+      unsubscribeError();
+      unsubscribeMessage();
+    };
   }, [token, user]);
 
   // 팀/개인 채팅방을 실제로 열었을 때 읽음 처리
@@ -979,103 +992,108 @@ const ChatPageContent = () => {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 min-w-0">
-            <button
-              onClick={openTeamChat}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                chatType === "TEAM"
-                  ? "bg-[#7F55B1] text-white shadow-sm"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              팀 채팅
-            </button>
-            <button
-              onClick={openSelfChat}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                chatType === "DIRECT" && selectedUserId === user?.id
-                  ? "bg-[#7F55B1] text-white shadow-sm"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              {user?.picture ? (
-                <Image
-                  src={user.picture}
-                  alt={user.name}
-                  width={20}
-                  height={20}
-                  className="rounded-full"
-                />
-              ) : (
-                <div className="w-5 h-5 rounded-full bg-[#7F55B1] text-white flex items-center justify-center text-[10px] font-semibold">
-                  {user?.name?.charAt(0) || "나"}
-                </div>
-              )}
-              내게 쓰기
-            </button>
-            <div className="text-xs text-gray-400 ml-1">개인 채팅</div>
-            <div className="flex items-center gap-2 overflow-x-auto flex-1 scrollbar-hide">
-              {teamMembers.length > 0 ? (
-                teamMembers
-                  .filter((member) => member.id !== user?.id)
-                  .map((member) => {
-                    const roomId = directRoomIds[member.id];
-                    const unreadCount = roomId
-                      ? unreadByRoomId[roomId] || 0
-                      : 0;
-                    return (
-                      <button
-                        key={member.id}
-                        onClick={() =>
-                          handleMemberClick(member.id, member.name)
-                        }
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 transition-colors ${
-                          selectedUserId === member.id
-                            ? "bg-[#7F55B1] text-white shadow-sm"
-                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                        }`}
-                      >
-                        {member.picture ? (
-                          <Image
-                            src={member.picture}
-                            alt={member.name}
-                            width={24}
-                            height={24}
-                            className="rounded-full"
-                          />
-                        ) : (
-                          <div className="w-6 h-6 rounded-full bg-[#7F55B1] text-white flex items-center justify-center text-xs font-medium">
-                            {member.name.charAt(0)}
-                          </div>
-                        )}
-                        <span className="text-sm font-medium">
-                          {member.name}
-                        </span>
-                        {unreadCount > 0 && (
-                          <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">
-                            {unreadCount}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })
-              ) : (
-                <span className="text-sm text-gray-400">로딩 중...</span>
-              )}
+          <div className="space-y-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <button
+                onClick={openTeamChat}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  chatType === "TEAM"
+                    ? "bg-[#7F55B1] text-white shadow-sm"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                팀 채팅
+              </button>
+              <button
+                onClick={openSelfChat}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  chatType === "DIRECT" && selectedUserId === user?.id
+                    ? "bg-[#7F55B1] text-white shadow-sm"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                {user?.picture ? (
+                  <Image
+                    src={user.picture}
+                    alt={user.name}
+                    width={20}
+                    height={20}
+                    className="rounded-full"
+                  />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-[#7F55B1] text-white flex items-center justify-center text-[10px] font-semibold">
+                    {user?.name?.charAt(0) || "나"}
+                  </div>
+                )}
+                내게 쓰기
+              </button>
+              <button
+                type="button"
+                onClick={handleSummarizeChat}
+                disabled={
+                  isSummarizing || !currentChatRoomId || messages.length === 0
+                }
+                className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-r from-[#7F55B1] to-purple-500 hover:from-[#6B479A] hover:to-purple-600 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 font-bold tracking-wide">
+                  AI
+                </span>
+                {isSummarizing ? "요약 중..." : "요약하기"}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleSummarizeChat}
-              disabled={
-                isSummarizing || !currentChatRoomId || messages.length === 0
-              }
-              className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-r from-[#7F55B1] to-purple-500 hover:from-[#6B479A] hover:to-purple-600 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 font-bold tracking-wide">
-                AI
-              </span>
-              {isSummarizing ? "요약 중..." : "요약하기"}
-            </button>
+
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="text-xs text-gray-500 shrink-0">개인 채팅</div>
+              <div className="flex items-center gap-2 overflow-x-auto flex-1 scrollbar-hide snap-x snap-mandatory">
+                {teamMembers.length > 0 ? (
+                  teamMembers
+                    .filter((member) => member.id !== user?.id)
+                    .map((member) => {
+                      const roomId = directRoomIds[member.id];
+                      const unreadCount = roomId
+                        ? unreadByRoomId[roomId] || 0
+                        : 0;
+                      return (
+                        <button
+                          key={member.id}
+                          onClick={() =>
+                            handleMemberClick(member.id, member.name)
+                          }
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 snap-start transition-colors ${
+                            selectedUserId === member.id
+                              ? "bg-[#7F55B1] text-white shadow-sm"
+                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          }`}
+                        >
+                          {member.picture ? (
+                            <Image
+                              src={member.picture}
+                              alt={member.name}
+                              width={24}
+                              height={24}
+                              className="rounded-full"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 rounded-full bg-[#7F55B1] text-white flex items-center justify-center text-xs font-medium">
+                              {member.name.charAt(0)}
+                            </div>
+                          )}
+                          <span className="text-sm font-medium">
+                            {member.name}
+                          </span>
+                          {unreadCount > 0 && (
+                            <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">
+                              {unreadCount}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })
+                ) : (
+                  <span className="text-sm text-gray-400">로딩 중...</span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

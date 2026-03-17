@@ -47,6 +47,15 @@ export const useAuthStore = create<AuthState>()(
 
       // 로그아웃 함수
       logout: () => {
+        try {
+          if (typeof window !== "undefined") {
+            // 계정 전환 시 이전 소켓 연결이 남지 않도록 정리
+            const { chatWebSocketClient } = require("@/lib/websocket/chatClient");
+            chatWebSocketClient.disconnect();
+          }
+        } catch (error) {
+          // noop
+        }
         set({
           isLoggedIn: false,
           user: null,

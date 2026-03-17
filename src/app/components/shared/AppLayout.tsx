@@ -45,11 +45,15 @@ export default function AppLayout({
 
   // 전역 WebSocket 연결 및 알림 처리
   useEffect(() => {
+    const wsClient = wsClientRef.current;
+
     if (!token || !user) {
+      // 로그아웃/세션 해제 시 기존 연결을 종료해 계정 혼선을 방지
+      wsClient.disconnect();
+      messageHandlerRef.current = null;
+      connectHandlerRef.current = null;
       return;
     }
-
-    const wsClient = wsClientRef.current;
     const isChatPage = pathname === "/chat";
 
     // 메시지 핸들러: 채팅 페이지가 아닐 때만 알림 표시
@@ -85,10 +89,11 @@ export default function AppLayout({
     };
 
     // 전역 알림 핸들러 등록
-    wsClient.onMessage(handleMessage);
+    const unsubscribeMessage = wsClient.onMessage(handleMessage);
     messageHandlerRef.current = handleMessage;
 
     // 연결 콜백은 한 번만 등록 (중복 방지)
+    let unsubscribeConnect: (() => void) | null = null;
     if (!connectHandlerRef.current) {
       const connectHandler = () => {
         if (user.teamName) {
@@ -96,7 +101,7 @@ export default function AppLayout({
           wsClient.joinRoom("", "TEAM");
         }
       };
-      wsClient.onConnect(connectHandler);
+      unsubscribeConnect = wsClient.onConnect(connectHandler);
       connectHandlerRef.current = connectHandler;
     }
 
@@ -110,9 +115,13 @@ export default function AppLayout({
       }
     }
 
-    // 컴포넌트 언마운트 시 정리하지 않음 (전역 연결 유지)
+    // 콜백 중복 등록 방지
     return () => {
-      // 메시지 핸들러는 유지 (다른 컴포넌트에서도 사용할 수 있음)
+      unsubscribeMessage();
+      if (unsubscribeConnect) {
+        unsubscribeConnect();
+        connectHandlerRef.current = null;
+      }
     };
   }, [token, user, setHasNewMessage, pathname]);
 

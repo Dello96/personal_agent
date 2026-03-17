@@ -20,6 +20,21 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+@layer base {
+  input,
+  textarea,
+  select,
+  [contenteditable="true"] {
+    color: #111827;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #6b7280;
+    opacity: 1;
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

@@ -19,7 +19,9 @@
       ],
       "environment": [
         { "name": "NODE_ENV", "value": "production" },
-        { "name": "NEXT_PUBLIC_API_URL", "value": "https://www.worktogether.it.kr" }
+        { "name": "NEXT_PUBLIC_API_URL", "value": "https://www.worktogether.it.kr" },
+        { "name": "NEXT_PUBLIC_WEATHER_KEY", "value": "80fbb018ce56e7ecfff5d39c15b5084f005e37c832abcd3bffcb28b5ed481328" },
+        { "name": "KAKAO_REST_API_KEY", "value": "f973aa86ba20579045fa02c8954565b1" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

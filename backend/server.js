@@ -51,7 +51,6 @@ const githubRoutes = require("./routes/github");
 const figmaRoutes = require("./routes/figma");
 const notificationRoutes = require("./routes/notifications");
 const linksRoutes = require("./routes/links");
-const aiRoutes = require("./routes/ai");
 const meetingNotesRoutes = require("./routes/meetingNotes");
 
 app.use("/api/tasks", tasksRoutes);
@@ -62,7 +61,6 @@ app.use("/api/github", githubRoutes);
 app.use("/api/figma", figmaRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/links", linksRoutes);
-app.use("/api/ai", aiRoutes);
 app.use("/api/meeting-notes", meetingNotesRoutes);
 
 const uploadRoutes = require("./routes/upload");
