@@ -54,6 +54,7 @@ export interface ChatWebSocketClient {
 }
 
 class ChatWebSocketClientImpl implements ChatWebSocketClient {
+  private static readonly HEARTBEAT_INTERVAL_MS = 25000;
   private ws: WebSocket | null = null;
   private token: string | null = null;
   private messageCallbacks: Array<(message: any) => void> = [];
@@ -64,6 +65,7 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000; // 1초
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
 
   connect(token: string) {
     // 기존 연결이 다른 계정 토큰이면 반드시 재연결
@@ -95,6 +97,7 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
       this.ws.close();
       this.ws = null;
     }
+    this.stopHeartbeat();
 
     this.token = token;
     const wsBase = getWebSocketBaseUrl();
@@ -107,6 +110,7 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
       this.ws.onopen = () => {
         console.log("✅ WebSocket 연결 성공");
         this.reconnectAttempts = 0;
+        this.startHeartbeat();
         this.connectCallbacks.forEach((callback) => callback());
       };
 
@@ -130,6 +134,7 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
 
       this.ws.onclose = (event) => {
         console.log("🔌 WebSocket 연결 종료:", event.code, event.reason);
+        this.stopHeartbeat();
         this.disconnectCallbacks.forEach((callback) => callback());
 
         // 정상 종료가 아니면 재연결 시도
@@ -193,6 +198,7 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
       }
       this.ws = null;
     }
+    this.stopHeartbeat();
     this.token = null;
 
     // 콜백은 초기화하지 않음 (재연결 시 재사용)
@@ -261,6 +267,22 @@ class ChatWebSocketClientImpl implements ChatWebSocketClient {
       this.ws.send(JSON.stringify(message));
     } else {
       console.error("WebSocket이 열려있지 않습니다.");
+    }
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.send({ type: "ping", timestamp: Date.now() });
+      }
+    }, ChatWebSocketClientImpl.HEARTBEAT_INTERVAL_MS);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
   }
 

@@ -213,6 +213,16 @@ class ChatWebSocketServer {
         await this.handleSend(ws, user, message);
         break;
 
+      case "ping":
+        // ALB/네트워크 유휴 타임아웃 방지용 heartbeat
+        ws.send(
+          JSON.stringify({
+            type: "pong",
+            timestamp: message?.timestamp || Date.now(),
+          })
+        );
+        break;
+
       default:
         ws.send(
           JSON.stringify({
