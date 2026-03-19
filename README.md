@@ -1,37 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🚀 Personal Agent
 
-## Getting Started
+AI 기반 협업 및 업무 관리 서비스
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 📌 프로젝트 소개
+- 서비스 목적
+- 어떤 문제를 해결하려고 했는지
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
+## 🏗 아키텍처
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+(여기 그림 있으면 최고)
 
-## Learn More
+- Frontend: Next.js
+- Backend: Node.js (Express)
+- Infra: AWS ECS Fargate, ALB, ECR
+- DB: PostgreSQL → Supabase
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🔥 핵심 기술 결정
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 1. ECS Fargate 선택 이유
+- 서버 관리 부담 제거
+- 컨테이너 기반 확장성 확보
 
-## Deploy on Vercel
+### 2. ALB 라우팅 구조
+- /api, /auth 분리
+- 트래픽 분산 처리
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 💥 트러블슈팅
 
+### 🚨 RDS 비용 문제
+
+#### 문제
+- Aurora db.r6g.2xlarge 사용
+- 약 $600 비용 발생
+
+#### 원인
+- 과도한 스펙 선택
+- 시간 기반 과금 구조 미인지
+
+#### 해결
+- Supabase로 전환
+- 리소스 구조 재설계
+
+#### 결과
+- 비용 95% 절감
+
+---
+
+## ⚡ 성능 / 개선
+
+- API 응답 구조 최적화
+- 상태 관리 개선
+- 불필요 요청 감소
+
+---
+
+## 🧠 배운 점
+
+- 인프라 설계의 중요성
+- 비용 최적화 경험
