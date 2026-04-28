@@ -1,6 +1,11 @@
-// backend/prisma/seed.js 파일 생성
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+// 앱과 동일한 Prisma 인스턴스 사용 (Prisma 7 + @prisma/adapter-pg).
+// seed만 new PrismaClient() 하면 어댑터 없이 생성되어 __internal 등 런타임 오류가 날 수 있음.
+const path = require("path");
+require("dotenv").config({
+  path: path.join(__dirname, "../../.env.local"),
+});
+
+const prisma = require("../db/prisma");
 
 async function main() {
   const teams = ["개발팀", "기획팀", "디자인팀"];
@@ -15,5 +20,10 @@ async function main() {
 }
 
 main()
-  .catch(console.error)
-  .finally(() => prisma.$disconnect());
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

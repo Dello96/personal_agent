@@ -27,6 +27,11 @@ yarn-error.log*
 
 # local env files
 .env*.local
+awscli-bundle/
+tmp-taskdef*.json
+ecs-backend-taskdef.json
+.env
+.env.*
 
 # vercel
 .vercel

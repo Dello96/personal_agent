@@ -66,7 +66,7 @@ router.post("/register", async (req, res) => {
 
     // 8. JWT 토큰 생성
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, {
-      expiresIn: "7d",
+      expiresIn: "30d",
     });
 
     // 9. 비밀번호 제외하고 응답
@@ -124,7 +124,7 @@ router.post("/login", async (req, res) => {
 
     // 5. JWT 토큰 생성
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, {
-      expiresIn: "7d",
+      expiresIn: "30d",
     });
 
     // 6. 비밀번호 제외하고 응답

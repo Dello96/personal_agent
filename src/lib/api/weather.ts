@@ -17,33 +17,114 @@ const VILAGE_BASE_TIMES = [
   "2300",
 ];
 
-/** 한국 시간 기준 오늘 YYYYMMDD */
-function getKstDate(): string {
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+type KmaObservationItem = {
+  category: string;
+  obsrValue?: string;
+};
+
+type KmaForecastItem = {
+  category: string;
+  fcstDate: string;
+  fcstTime: string;
+  fcstValue: string;
+};
+
+/** 현재 시각을 KST 기준으로 반환 (UTC getter와 함께 사용) */
+function getKstNow(): Date {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000);
+}
+
+/** KST Date(shifted) -> YYYYMMDD */
+function formatKstYmd(kst: Date): string {
   const y = kst.getUTCFullYear();
   const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
   const d = String(kst.getUTCDate()).padStart(2, "0");
   return `${y}${m}${d}`;
 }
 
-/** 초단기실황용 base_time: 매시 정시, 데이터 지연 고려해 1시간 전 사용 */
-function getUltraSrtBaseTime(): string {
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const h = kst.getUTCHours();
-  const prevHour = h - 1 < 0 ? 23 : h - 1;
-  return `${String(prevHour).padStart(2, "0")}00`;
+/** 초단기실황용 base_date/base_time: 데이터 지연 고려해 1시간 전 정시 */
+function getUltraSrtBaseDateTime(nowKst: Date): {
+  baseDate: string;
+  baseTime: string;
+} {
+  const target = new Date(nowKst.getTime() - 60 * 60 * 1000);
+  const h = target.getUTCHours();
+  return {
+    baseDate: formatKstYmd(target),
+    baseTime: `${String(h).padStart(2, "0")}00`,
+  };
 }
 
-/** 단기예보용 base_time: 이미 발표된 가장 최근 시각 (3시간 간격) */
-function getVilageBaseTime(): string {
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const h = kst.getUTCHours();
-  const currentHHMM = h * 100;
+/** 단기예보용 base_date/base_time: 이미 발표된 가장 최근 시각(새벽은 전일 2300) */
+function getVilageBaseDateTime(nowKst: Date): {
+  baseDate: string;
+  baseTime: string;
+} {
+  const h = nowKst.getUTCHours();
+  const min = nowKst.getUTCMinutes();
+  const currentHHMM = h * 100 + min;
   const past = VILAGE_BASE_TIMES.filter((t) => parseInt(t, 10) <= currentHHMM);
-  return past.length > 0 ? past[past.length - 1] : "2300";
+  if (past.length > 0) {
+    return {
+      baseDate: formatKstYmd(nowKst),
+      baseTime: past[past.length - 1],
+    };
+  }
+
+  const yesterdayKst = new Date(nowKst.getTime() - 24 * 60 * 60 * 1000);
+  return {
+    baseDate: formatKstYmd(yesterdayKst),
+    baseTime: "2300",
+  };
+}
+
+/** "YYYYMMDD"+"HHMM" 형태를 숫자 키로 변환 */
+function toDateTimeKey(date: string, time: string): number {
+  return Number(`${date}${time}`);
+}
+
+/** 현재 시각 기준 가장 가까운 예보 슬롯 선택(미래 우선, 없으면 가장 최신 과거) */
+function pickForecastSlot(
+  list: KmaForecastItem[],
+  nowKst: Date
+): { fcstDate: string; fcstTime: string } | null {
+  const seen = new Set<string>();
+  const slots = list
+    .map((i) => ({ fcstDate: i.fcstDate, fcstTime: i.fcstTime }))
+    .filter((s) => {
+      const key = `${s.fcstDate}-${s.fcstTime}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+  if (slots.length === 0) return null;
+
+  const nowKey = toDateTimeKey(
+    formatKstYmd(nowKst),
+    `${String(nowKst.getUTCHours()).padStart(2, "0")}${String(
+      nowKst.getUTCMinutes()
+    ).padStart(2, "0")}`
+  );
+
+  let future: { fcstDate: string; fcstTime: string } | null = null;
+  let futureKey = Number.POSITIVE_INFINITY;
+  let latestPast: { fcstDate: string; fcstTime: string } | null = null;
+  let latestPastKey = Number.NEGATIVE_INFINITY;
+
+  for (const slot of slots) {
+    const key = toDateTimeKey(slot.fcstDate, slot.fcstTime);
+    if (key >= nowKey && key < futureKey) {
+      future = slot;
+      futureKey = key;
+    }
+    if (key <= nowKey && key > latestPastKey) {
+      latestPast = slot;
+      latestPastKey = key;
+    }
+  }
+
+  return future ?? latestPast ?? slots[0];
 }
 
 /** serviceKey는 이미 인코딩 여부가 반영된 값이므로 쿼리에서 한 번만 넣음(이중 인코딩 방지) */
@@ -145,13 +226,15 @@ export async function getWeatherData(
   }
 
   try {
+    const nowKst = getKstNow();
     const grid = dfsXYConv("toXY", latitude, longitude);
     if ("lat" in grid) {
       return { ok: false, error: "격자 변환 실패", data: null };
     }
     const nx = grid.x;
     const ny = grid.y;
-    const baseDate = getKstDate();
+    const ultraBase = getUltraSrtBaseDateTime(nowKst);
+    const vilageBase = getVilageBaseDateTime(nowKst);
     const namePromise = (async () => {
       const kakaoName = await getRegionFromCoords(latitude, longitude);
       if (
@@ -163,9 +246,6 @@ export async function getWeatherData(
       }
       return getLocationName(latitude, longitude);
     })();
-    const ultraBaseTime = getUltraSrtBaseTime();
-    const vilageBaseTime = getVilageBaseTime();
-
     // Encoding 키(% 포함)는 그대로, Decoding 키(+,/ 등)는 URL 인코딩 후 사용
     const rawKey = apiKey.trim();
     const serviceKey = rawKey.includes("%")
@@ -175,7 +255,6 @@ export async function getWeatherData(
       pageNo: 1,
       numOfRows: 1000,
       dataType: "JSON",
-      base_date: baseDate,
       nx,
       ny,
     };
@@ -183,7 +262,8 @@ export async function getWeatherData(
     // 1) 초단기실황: 현재 기온(T1H)
     const ultraUrl = buildKmaUrl("/getUltraSrtNcst", serviceKey, {
       ...commonParams,
-      base_time: ultraBaseTime,
+      base_date: ultraBase.baseDate,
+      base_time: ultraBase.baseTime,
     });
     const ultraRes = await fetch(ultraUrl, { next: { revalidate: 600 } });
     const ultraText = await ultraRes.text();
@@ -215,21 +295,22 @@ export async function getWeatherData(
       }
     }
     const ultraItem = ultraJson?.response?.body?.items?.item;
-    const ultraList = Array.isArray(ultraItem)
+    const ultraList: KmaObservationItem[] = Array.isArray(ultraItem)
       ? ultraItem
       : ultraItem
         ? [ultraItem]
         : [];
 
     const t1h = ultraList.find(
-      (i: { category: string }) => i.category === "T1H"
+      (i) => i.category === "T1H"
     );
     const temp = t1h ? Number(t1h.obsrValue) : null;
 
     // 2) 단기예보: 하늘상태(SKY), 습도(REH), 강수형태(PTY) - 같은 격자, 가장 최근 base_time
     const vilageUrl = buildKmaUrl("/getVilageFcst", serviceKey, {
       ...commonParams,
-      base_time: vilageBaseTime,
+      base_date: vilageBase.baseDate,
+      base_time: vilageBase.baseTime,
     });
     const vilageRes = await fetch(vilageUrl, { next: { revalidate: 600 } });
     const vilageText = await vilageRes.text();
@@ -247,24 +328,34 @@ export async function getWeatherData(
       return { ok: false, error: "기상청 API 응답 형식 오류", data: null };
     }
     const vilageItem = vilageJson?.response?.body?.items?.item;
-    const vilageList = Array.isArray(vilageItem)
+    const vilageList: KmaForecastItem[] = Array.isArray(vilageItem)
       ? vilageItem
       : vilageItem
         ? [vilageItem]
         : [];
 
-    const fcstDate = baseDate;
+    const slot = pickForecastSlot(vilageList, nowKst);
+    if (!slot) {
+      return { ok: false, error: "예보 데이터가 없습니다.", data: null };
+    }
+
     const skyItem = vilageList.find(
-      (i: { category: string; fcstDate: string }) =>
-        i.category === "SKY" && i.fcstDate === fcstDate
+      (i) =>
+        i.category === "SKY" &&
+        i.fcstDate === slot.fcstDate &&
+        i.fcstTime === slot.fcstTime
     );
     const rehItem = vilageList.find(
-      (i: { category: string; fcstDate: string }) =>
-        i.category === "REH" && i.fcstDate === fcstDate
+      (i) =>
+        i.category === "REH" &&
+        i.fcstDate === slot.fcstDate &&
+        i.fcstTime === slot.fcstTime
     );
     const ptyItem = vilageList.find(
-      (i: { category: string; fcstDate: string }) =>
-        i.category === "PTY" && i.fcstDate === fcstDate
+      (i) =>
+        i.category === "PTY" &&
+        i.fcstDate === slot.fcstDate &&
+        i.fcstTime === slot.fcstTime
     );
 
     const sky = skyItem?.fcstValue ?? "1";

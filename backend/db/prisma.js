@@ -1,8 +1,10 @@
+const path = require("path");
 const { PrismaClient } = require("@prisma/client");
 const { Pool } = require("pg");
 const { PrismaPg } = require("@prisma/adapter-pg");
 const dotenv = require("dotenv");
-dotenv.config({ path: "../.env.local" });
+// 프로젝트 루트 .env.local (실행 cwd와 무관하게 로드)
+dotenv.config({ path: path.join(__dirname, "../../.env.local") });
 
 // PostgreSQL 연결 풀 생성
 const pool = new Pool({

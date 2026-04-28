@@ -183,7 +183,7 @@ app.get("/login/redirect", async (req, res) => {
 
     // 4. JWT 토큰 생성
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
+      expiresIn: "30d",
     });
 
     const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
@@ -291,7 +291,7 @@ app.get("/auth/kakao/callback", async (req, res) => {
 
     // 5. JWT 토큰 생성 (Google과 동일)
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
+      expiresIn: "30d",
     });
 
     const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
