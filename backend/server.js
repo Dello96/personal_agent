@@ -22,7 +22,7 @@ const kakaoClientId =
   process.env.KAKAO_CLIENT_ID || process.env.KAKAO_REST_API_KEY;
 const kakaoSecret = process.env.KAKAO_CLIENT_SECRET;
 
-// 백엔드 URL (환경 변수에서 가져오거나 기본값 사용)
+// 백엔드 URL (환경 변수에서 가져오거나 기본값
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8080";
 const GOOGLE_REDIRECT_URI = `${BACKEND_URL}/login/redirect`;
 
